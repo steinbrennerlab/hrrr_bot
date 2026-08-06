@@ -54,6 +54,17 @@ data/grib/smoke_20260806_t15z_f00.grib2 ...  cached records, reused on re-runs
 An MP4 is written alongside the GIF when `ffmpeg` is on `PATH`; without it you
 just get the GIF.
 
+`out/` and `data/` are ignored by git — they are scratch. Animations worth
+keeping get copied into `runs/`, which **is** committed, so the archive
+survives across machines and sessions:
+
+```
+runs/hrrr_smoke_puget_20260806_t16z.gif
+```
+
+The GIF filename already carries the date and cycle, so re-running the same
+cycle overwrites its own file and a new cycle adds one.
+
 The run also prints when each labelled city peaks:
 
 ```
