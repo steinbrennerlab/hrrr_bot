@@ -1,0 +1,38 @@
+[project]
+name = "hrrr-smoke"
+version = "1.0.0"
+description = "Animate NOAA HRRR near-surface smoke forecasts for the Puget Sound"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "numpy>=1.26",
+    "xarray>=2024.1",
+    "cfgrib>=0.9.11",
+    "eccodes>=1.7",
+    "matplotlib>=3.8",
+    "cartopy>=0.22",
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+hrrr-smoke = "hrrr_smoke.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["hrrr_smoke"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
