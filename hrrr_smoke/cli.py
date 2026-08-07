@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
+import shutil
 import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -14,6 +16,7 @@ from .animate import make_gif, make_mp4
 from .catalog import Cycle, find_latest_cycle, parse_cycle, select_fhrs
 from .config import DEFAULT_TZ, DOMAINS
 from .fetch import fetch_all
+from .gate import THRESHOLDS, evaluate
 from .grid import SmokeFrame, city_series, load_frame
 from .render import FrameRenderer
 
@@ -52,6 +55,35 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--out", type=Path, default=Path("out"), help="output directory")
     p.add_argument(
+        "--archive",
+        type=Path,
+        help="also copy the finished GIF (and MP4) into this directory",
+    )
+
+    gate = p.add_argument_group(
+        "gate",
+        "Skip rendering unless a reference city has seen, or is forecast to "
+        "see, smoke at or above a threshold. Off by default, so a manual run "
+        "always produces an animation.",
+    )
+    gate.add_argument("--gate", action="store_true", help="enable the gate")
+    gate.add_argument("--gate-city", default="Seattle", help="reference city")
+    gate.add_argument(
+        "--gate-threshold",
+        choices=sorted(THRESHOLDS),
+        default="moderate",
+        help="lowest AQI category that counts as worth rendering",
+    )
+    gate.add_argument(
+        "--gate-days",
+        type=int,
+        default=1,
+        help="local days of history to include (1 = yesterday and today)",
+    )
+    gate.add_argument(
+        "--gate-step", type=int, default=1, help="hours between historical samples"
+    )
+    p.add_argument(
         "--cache", type=Path, default=Path("data/grib"), help="GRIB cache directory"
     )
     p.add_argument("--dpi", type=int, default=130, help="frame resolution")
@@ -60,6 +92,28 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-mp4", action="store_true", help="write only the GIF")
     p.add_argument("--quiet", action="store_true", help="warnings and errors only")
     return p
+
+
+def _github_output(**values: object) -> None:
+    """Publish results to the workflow, when running inside GitHub Actions."""
+    path = os.environ.get("GITHUB_OUTPUT")
+    if not path:
+        return
+    with open(path, "a", encoding="utf-8") as fh:
+        for key, value in values.items():
+            fh.write(f"{key}={value}\n")
+
+
+def _archive(paths: list[Path], into: Path) -> list[Path]:
+    """Copy finished animations into the keep-forever directory."""
+    into.mkdir(parents=True, exist_ok=True)
+    copied = []
+    for path in paths:
+        target = into / path.name
+        shutil.copy2(path, target)
+        copied.append(target)
+        log.info("archived %s", target)
+    return copied
 
 
 def _summarise(frames: list[SmokeFrame], domain, tz: ZoneInfo) -> None:
@@ -123,6 +177,36 @@ def run(argv: list[str] | None = None) -> int:
         len(fhrs),
     )
 
+    cycle_id = f"{cycle.date_str}_t{cycle.hour:02d}z"
+    if args.gate:
+        try:
+            verdict = evaluate(
+                session,
+                cycle,
+                domain,
+                args.cache,
+                tz=tz,
+                city=args.gate_city,
+                threshold=args.gate_threshold,
+                days=args.gate_days,
+                step_hours=args.gate_step,
+                workers=args.workers,
+            )
+        except (RuntimeError, ValueError) as exc:
+            log.error("%s", exc)
+            return 1
+
+        log.info("gate: %s", verdict.describe(tz))
+        if not verdict.triggered:
+            log.info("Nothing worth animating; skipping the render.")
+            _github_output(
+                rendered="false",
+                cycle=cycle_id,
+                peak=f"{verdict.peak:.1f}",
+                summary=verdict.describe(tz),
+            )
+            return 0
+
     records = fetch_all(
         session, cycle, fhrs, args.cache, workers=args.workers, force=args.force
     )
@@ -150,12 +234,25 @@ def run(argv: list[str] | None = None) -> int:
         return 1
     log.info("rendered %d frames -> %s", len(paths), frame_dir)
 
-    stem = f"hrrr_smoke_{args.domain}_{cycle.date_str}_t{cycle.hour:02d}z"
+    stem = f"hrrr_smoke_{args.domain}_{cycle_id}"
     gif = make_gif(paths, args.out / f"{stem}.gif", fps=args.fps)
+    animations = [gif]
     if not args.no_mp4:
-        make_mp4(paths, args.out / f"{stem}.mp4", fps=args.fps)
+        mp4 = make_mp4(paths, args.out / f"{stem}.mp4", fps=args.fps)
+        if mp4:
+            animations.append(mp4)
+
+    if args.archive:
+        gif = _archive(animations, args.archive)[0]
 
     _summarise(frames, domain, tz)
+    _github_output(
+        rendered="true",
+        cycle=cycle_id,
+        gif=gif,
+        frames=len(paths),
+        summary=f"{len(paths)} frames from HRRR {cycle}",
+    )
     print(f"\nAnimation: {gif}")
     return 0
 

@@ -1,0 +1,115 @@
+name: Puget Sound smoke
+
+on:
+  schedule:
+    # 15:00 UTC is 8 AM PDT / 7 AM PST. GitHub's cron often fires late, which
+    # is harmless here: the scraper picks whichever cycle is current, so a
+    # delayed run just animates a slightly newer forecast.
+    - cron: "0 15 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Render even if Seattle stays below the threshold"
+        type: boolean
+        default: false
+      threshold:
+        description: "Lowest AQI category worth rendering"
+        type: choice
+        default: moderate
+        options: [good, moderate, sensitive, unhealthy, very-unhealthy, hazardous]
+      hours:
+        description: "Forecast hours to animate"
+        default: "24"
+
+# Needed to commit the animation back to runs/.
+permissions:
+  contents: write
+
+# Two runs pushing to runs/ at once would race on the same branch.
+concurrency:
+  group: puget-smoke
+  cancel-in-progress: false
+
+jobs:
+  animate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Cache Natural Earth basemap
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/cartopy
+          key: cartopy-naturalearth-10m-v1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Render when Seattle has seen moderate or worse smoke
+        id: smoke
+        env:
+          FORCE: ${{ inputs.force }}
+          THRESHOLD: ${{ inputs.threshold || 'moderate' }}
+          HOURS: ${{ inputs.hours || '24' }}
+        run: |
+          gate="--gate"
+          if [ "$FORCE" = "true" ]; then
+            echo "Manual override: rendering regardless of the gate."
+            gate=""
+          fi
+          python -m hrrr_smoke \
+            $gate \
+            --gate-city Seattle \
+            --gate-threshold "$THRESHOLD" \
+            --gate-days 1 \
+            --hours "$HOURS" \
+            --archive runs
+
+      - name: Commit the animation
+        if: steps.smoke.outputs.rendered == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runs
+          if git diff --cached --quiet; then
+            echo "runs/ already had this cycle; nothing to commit."
+            exit 0
+          fi
+          git commit -m "Add ${{ steps.smoke.outputs.cycle }} Puget Sound smoke run
+
+          ${{ steps.smoke.outputs.summary }}"
+          git push
+
+      - name: Upload the animation
+        if: steps.smoke.outputs.rendered == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ steps.smoke.outputs.cycle }}
+          path: |
+            out/*.gif
+            out/*.mp4
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Report
+        if: always()
+        run: |
+          if [ "${{ steps.smoke.outputs.rendered }}" = "true" ]; then
+            echo "### Smoke animation built" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### No animation — clean air" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.smoke.outputs.summary }}" >> "$GITHUB_STEP_SUMMARY"
