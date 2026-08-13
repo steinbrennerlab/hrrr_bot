@@ -90,21 +90,32 @@ def find_latest_cycle(
     session: requests.Session,
     *,
     min_fhrs: int = 12,
-    look_back: int = 8,
+    look_back: int | None = None,
     now: datetime | None = None,
+    extended_only: bool = False,
 ) -> Cycle:
     """Newest cycle that has published at least `min_fhrs` forecast hours.
 
     NCEP posts files as the model integrates, so the newest cycle on S3 is
     usually incomplete for the first hour or so. Walking backwards avoids
     building an animation out of the three frames that happen to exist yet.
+
+    `extended_only` restricts the search to the cycles that forecast out to 48
+    hours. Those finish about 1.8 hours after their initialisation time, so a
+    caller wanting a complete long run should not start looking before then.
     """
     now = now or datetime.now(UTC)
     top = now.replace(minute=0, second=0, microsecond=0)
+    if look_back is None:
+        # Extended cycles are six hours apart, so an eight-hour walk back can
+        # straddle at most one of them -- give the search room for two.
+        look_back = 14 if extended_only else 8
     best: Cycle | None = None
 
     for back in range(look_back):
         run = top - timedelta(hours=back)
+        if extended_only and run.hour not in EXTENDED_CYCLES:
+            continue
         fhrs = _list_surface_fhrs(session, run)
         if not fhrs:
             continue
@@ -115,8 +126,14 @@ def find_latest_cycle(
             return cycle
 
     if best is None:
+        kind = (
+            "extended (" + "/".join(f"{h:02d}" for h in EXTENDED_CYCLES) + "Z) "
+            if extended_only
+            else ""
+        )
         raise RuntimeError(
-            f"No HRRR surface files found on S3 in the last {look_back} cycles."
+            f"No HRRR {kind}surface files found on S3 in the last "
+            f"{look_back} hours."
         )
     return best
 

@@ -35,6 +35,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--cycle",
         help="HRRR run to use as YYYYMMDDHH in UTC (default: latest available)",
     )
+    p.add_argument(
+        "--extended",
+        action="store_true",
+        help=(
+            "only use the 00/06/12/18Z cycles, which forecast out to 48 hours "
+            "instead of 18. They finish about 1.8 h after the cycle time."
+        ),
+    )
     p.add_argument("--start", type=int, default=0, help="first forecast hour")
     p.add_argument("--hours", type=int, default=24, help="last forecast hour")
     p.add_argument("--step", type=int, default=1, help="forecast hour stride")
@@ -151,7 +159,13 @@ def run(argv: list[str] | None = None) -> int:
         cycle: Cycle = (
             parse_cycle(session, args.cycle)
             if args.cycle
-            else find_latest_cycle(session)
+            # Asking for the extended cycles is asking for their length, so
+            # hold out for a run that has actually published what was asked.
+            else find_latest_cycle(
+                session,
+                extended_only=args.extended,
+                min_fhrs=args.hours if args.extended else 12,
+            )
         )
     except (RuntimeError, ValueError) as exc:
         log.error("%s", exc)

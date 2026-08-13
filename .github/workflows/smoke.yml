@@ -2,10 +2,14 @@ name: Puget Sound smoke
 
 on:
   schedule:
-    # 15:00 UTC is 8 AM PDT / 7 AM PST. GitHub's cron often fires late, which
-    # is harmless here: the scraper picks whichever cycle is current, so a
-    # delayed run just animates a slightly newer forecast.
-    - cron: "0 15 * * *"
+    # Only the 00/06/12/18Z cycles forecast out to 48 hours, and they finish
+    # about 1.8 h after the cycle time (12Z lands ~13:47Z). 14:30 UTC leaves
+    # ~40 min of margin and is 7:30 AM PDT / 6:30 AM PST.
+    #
+    # GitHub's cron often fires late, which is only ever safer here: --extended
+    # holds out for a cycle that has published all 48 hours, so a late run
+    # still gets a complete forecast rather than a half-written one.
+    - cron: "30 14 * * *"
   workflow_dispatch:
     inputs:
       force:
@@ -19,7 +23,10 @@ on:
         options: [good, moderate, sensitive, unhealthy, very-unhealthy, hazardous]
       hours:
         description: "Forecast hours to animate"
-        default: "24"
+        default: "48"
+      step:
+        description: "Hours between frames (2 halves the frame count and file size)"
+        default: "1"
 
 # Needed to commit the animation back to runs/.
 permissions:
@@ -62,7 +69,8 @@ jobs:
         env:
           FORCE: ${{ inputs.force }}
           THRESHOLD: ${{ inputs.threshold || 'moderate' }}
-          HOURS: ${{ inputs.hours || '24' }}
+          HOURS: ${{ inputs.hours || '48' }}
+          STEP: ${{ inputs.step || '1' }}
         run: |
           gate="--gate"
           if [ "$FORCE" = "true" ]; then
@@ -71,10 +79,12 @@ jobs:
           fi
           python -m hrrr_smoke \
             $gate \
+            --extended \
             --gate-city Seattle \
             --gate-threshold "$THRESHOLD" \
             --gate-days 1 \
             --hours "$HOURS" \
+            --step "$STEP" \
             --archive runs
 
       - name: Commit the animation
