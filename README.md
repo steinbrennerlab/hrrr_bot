@@ -3,6 +3,14 @@
 Scrapes NOAA's **HRRR-Smoke** near-surface smoke forecast and turns it into a
 short animation over the greater Puget Sound, labelled in local Pacific time.
 
+**Latest forecast** — these links never change, and always serve the most
+recent run:
+
+| | |
+|---|---|
+| GIF | https://github.com/steinbrennerlab/hrrr_bot/releases/latest/download/puget_smoke_latest.gif |
+| MP4 | https://github.com/steinbrennerlab/hrrr_bot/releases/latest/download/puget_smoke_latest.mp4 |
+
 ![example frame](docs/example_frame.png)
 
 ## What it pulls
@@ -73,8 +81,54 @@ overwrites its own file and a new cycle adds one.
 
 Size scales with frame count: 18 hours hourly is ~1.2 MB of GIF, 48 hours
 hourly is ~3.3 MB. `--step 2` halves both and is still perfectly readable for
-smoke transport. Git history is not reclaimable, so this is worth watching over
-a full smoke season.
+smoke transport. Git history is not reclaimable, which is what the retention
+policy below is for.
+
+## Retention
+
+`runs/index.json` records how bad each archived run actually was, which is what
+lets the archive forget a quiet Tuesday while keeping the weeks worth looking
+back at:
+
+```bash
+python -m hrrr_smoke --archive runs --prune-days 30 --prune-keep-above unhealthy
+```
+
+A run is deleted only when **both** are true: it is older than `--prune-days`,
+**and** the reference city stayed below `--prune-keep-above`. Anything that
+reached the threshold is kept forever.
+
+`unhealthy` (55.4 µg m⁻³) is the default bar. For Seattle, Moderate is an
+ordinary summer afternoon, but Unhealthy is a genuine smoke event — rare enough
+to be worth archiving, common enough that the archive is not empty.
+
+Two deliberate safety properties:
+
+- **An unmeasured run is never deleted.** Files archived before the manifest
+  existed are adopted with `peak_ugm3: null` and always kept. The manifest
+  cannot prove they were quiet, and deleting on a guess is the one irreversible
+  mistake available here.
+- Pruning runs **only after a new animation is archived**, so a quiet stretch
+  never quietly empties the directory.
+
+Severity is taken from the gate's window when the gate ran — that looks back
+over the previous day too, so it reflects the episode rather than just the
+forecast — and from the animation itself otherwise.
+
+## The permanent link
+
+Each successful scheduled run replaces a GitHub Release tagged `latest`, so
+these URLs are stable forever:
+
+```
+https://github.com/steinbrennerlab/hrrr_bot/releases/latest/download/puget_smoke_latest.gif
+https://github.com/steinbrennerlab/hrrr_bot/releases/latest/download/puget_smoke_latest.mp4
+```
+
+Release assets live outside git history, so the permanent link costs nothing in
+repository size. Committing a `runs/latest.gif` instead would work too, but
+every run would add another full copy to history — the thing the retention
+policy exists to avoid.
 
 The run also prints when each labelled city peaks:
 

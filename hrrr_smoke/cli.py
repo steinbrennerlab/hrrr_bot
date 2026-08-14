@@ -13,10 +13,11 @@ from zoneinfo import ZoneInfo
 import requests
 
 from .animate import make_gif, make_mp4
+from .archive import RunRecord, files_for, prune, record_run
 from .catalog import Cycle, find_latest_cycle, parse_cycle, select_fhrs
 from .config import DEFAULT_TZ, DOMAINS
 from .fetch import fetch_all
-from .gate import THRESHOLDS, evaluate
+from .gate import THRESHOLDS, evaluate, find_city
 from .grid import SmokeFrame, city_series, load_frame
 from .render import FrameRenderer
 
@@ -91,6 +92,22 @@ def build_parser() -> argparse.ArgumentParser:
     gate.add_argument(
         "--gate-step", type=int, default=1, help="hours between historical samples"
     )
+
+    keep = p.add_argument_group(
+        "retention",
+        "Housekeeping for --archive, applied after a new run is archived.",
+    )
+    keep.add_argument(
+        "--prune-days",
+        type=int,
+        help="delete archived runs older than this many days (off by default)",
+    )
+    keep.add_argument(
+        "--prune-keep-above",
+        choices=sorted(THRESHOLDS),
+        default="unhealthy",
+        help="never delete a run whose reference city reached this category",
+    )
     p.add_argument(
         "--cache", type=Path, default=Path("data/grib"), help="GRIB cache directory"
     )
@@ -122,6 +139,30 @@ def _archive(paths: list[Path], into: Path) -> list[Path]:
         copied.append(target)
         log.info("archived %s", target)
     return copied
+
+
+def _reference_peak(
+    frames: list[SmokeFrame], domain, city: str, gate_peak: float | None
+) -> tuple[float, str | None]:
+    """Worst smoke the reference city saw, for the archive's retention decision.
+
+    The gate looks back over the previous day as well, so when it ran its peak
+    is the better measure of how bad the episode actually was; without it, fall
+    back to the animation itself.
+    """
+    best = gate_peak or 0.0
+    at: str | None = None
+    try:
+        _, lat, lon = find_city(domain, city)
+    except ValueError:
+        return best, None
+    series = city_series(frames, lat, lon)
+    if series:
+        peak = max(series)
+        if peak >= best:
+            best = peak
+            at = frames[series.index(peak)].valid.isoformat()
+    return best, at
 
 
 def _summarise(frames: list[SmokeFrame], domain, tz: ZoneInfo) -> None:
@@ -192,6 +233,7 @@ def run(argv: list[str] | None = None) -> int:
     )
 
     cycle_id = f"{cycle.date_str}_t{cycle.hour:02d}z"
+    verdict = None
     if args.gate:
         try:
             verdict = evaluate(
@@ -256,14 +298,52 @@ def run(argv: list[str] | None = None) -> int:
         if mp4:
             animations.append(mp4)
 
+    pruned: list = []
     if args.archive:
-        gif = _archive(animations, args.archive)[0]
+        copied = _archive(animations, args.archive)
+        gif = copied[0]
+
+        peak, peak_at = _reference_peak(
+            frames, domain, args.gate_city, verdict.peak if verdict else None
+        )
+        record_run(
+            args.archive,
+            RunRecord(
+                # Keyed by the shared filename stem, so an earlier render of
+                # the same cycle is replaced rather than left half-orphaned.
+                cycle=stem,
+                cycle_time=cycle.run.isoformat(),
+                domain=args.domain,
+                reference_city=args.gate_city,
+                peak_ugm3=round(peak, 1),
+                peak_at=peak_at,
+                frames=len(paths),
+                files=files_for(args.archive, stem),
+            ),
+        )
+
+        if args.prune_days is not None:
+            pruned = prune(
+                args.archive,
+                keep_days=args.prune_days,
+                keep_above=THRESHOLDS[args.prune_keep_above],
+            )
+            if pruned:
+                log.info(
+                    "pruned %d run(s) older than %d days that stayed below %s",
+                    len(pruned),
+                    args.prune_days,
+                    args.prune_keep_above,
+                )
+            else:
+                log.info("nothing to prune")
 
     _summarise(frames, domain, tz)
     _github_output(
         rendered="true",
         cycle=cycle_id,
         gif=gif,
+        pruned=len(pruned),
         frames=len(paths),
         summary=f"{len(paths)} frames from HRRR {cycle}",
     )
