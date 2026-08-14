@@ -113,6 +113,82 @@ def test_find_latest_cycle_falls_back_to_partial_run():
     assert cycle.hour == 15  # partial beats nothing
 
 
+def test_extended_only_skips_the_18_hour_cycles():
+    # 14Z is newer, but only the 00/06/12/18Z runs reach 48 hours.
+    now = datetime(2026, 8, 6, 14, 30, tzinfo=UTC)
+    listings = {
+        "hrrr.20260806/conus/hrrr.t14z.wrfsfcf": _listing(
+            _keys("20260806", 14, range(0, 19))
+        ),
+        "hrrr.20260806/conus/hrrr.t12z.wrfsfcf": _listing(
+            _keys("20260806", 12, range(0, 49))
+        ),
+    }
+    cycle = find_latest_cycle(
+        FakeSession(listings), extended_only=True, min_fhrs=48, now=now
+    )
+    assert cycle.hour == 12
+    assert cycle.max_fhr == 48
+    assert max(cycle.fhrs) == 48
+
+
+def test_extended_only_never_lists_a_short_cycle():
+    now = datetime(2026, 8, 6, 14, 30, tzinfo=UTC)
+    session = FakeSession({})
+    with pytest.raises(RuntimeError):
+        find_latest_cycle(session, extended_only=True, now=now)
+    # The walk back must not spend requests on cycles that cannot be 48 hours.
+    assert all("t12z" in p or "t06z" in p or "t18z" in p or "t00z" in p
+               for p in session.calls)
+
+
+def test_extended_only_falls_back_when_the_newest_run_is_incomplete():
+    # 12Z is still integrating (f00-f24 only); 06Z has the full 48 hours.
+    now = datetime(2026, 8, 6, 13, 30, tzinfo=UTC)
+    listings = {
+        "hrrr.20260806/conus/hrrr.t12z.wrfsfcf": _listing(
+            _keys("20260806", 12, range(0, 25))
+        ),
+        "hrrr.20260806/conus/hrrr.t06z.wrfsfcf": _listing(
+            _keys("20260806", 6, range(0, 49))
+        ),
+    }
+    cycle = find_latest_cycle(
+        FakeSession(listings), extended_only=True, min_fhrs=48, now=now
+    )
+    assert cycle.hour == 6
+    assert max(cycle.fhrs) == 48
+
+
+def test_extended_lookback_reaches_a_second_cycle():
+    # Six hours apart means the default eight-hour walk back would find only
+    # one extended cycle; the search must reach further.
+    now = datetime(2026, 8, 6, 13, 0, tzinfo=UTC)
+    listings = {
+        "hrrr.20260806/conus/hrrr.t06z.wrfsfcf": _listing(
+            _keys("20260806", 6, range(0, 49))
+        ),
+    }
+    cycle = find_latest_cycle(
+        FakeSession(listings), extended_only=True, min_fhrs=48, now=now
+    )
+    assert cycle.hour == 6
+
+
+def test_default_search_still_prefers_the_newest_short_cycle():
+    now = datetime(2026, 8, 6, 14, 30, tzinfo=UTC)
+    listings = {
+        "hrrr.20260806/conus/hrrr.t14z.wrfsfcf": _listing(
+            _keys("20260806", 14, range(0, 19))
+        ),
+        "hrrr.20260806/conus/hrrr.t12z.wrfsfcf": _listing(
+            _keys("20260806", 12, range(0, 49))
+        ),
+    }
+    cycle = find_latest_cycle(FakeSession(listings), now=now)
+    assert cycle.hour == 14
+
+
 def test_find_latest_cycle_raises_when_bucket_is_empty():
     with pytest.raises(RuntimeError, match="No HRRR surface files"):
         find_latest_cycle(

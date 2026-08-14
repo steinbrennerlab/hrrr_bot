@@ -118,10 +118,21 @@ a success, not a failure.
 
 ## Scheduled runs
 
-`.github/workflows/smoke.yml` runs the gated pipeline daily at 15:00 UTC
-(8 AM PDT / 7 AM PST) and commits any animation to `runs/`. GitHub's cron often
-fires late, which is harmless — the scraper picks whichever cycle is current, so
-a delayed run just animates a slightly newer forecast.
+`.github/workflows/smoke.yml` runs the gated pipeline daily at **14:30 UTC**
+(7:30 AM PDT / 6:30 AM PST) with `--extended --hours 48`, and commits any
+animation to `runs/`.
+
+That time is chosen off the cycle schedule rather than the clock: the 12Z long
+run finishes about 13:47Z, so 14:30 leaves ~40 minutes of margin. GitHub's cron
+often fires late, which is only ever safer here — `--extended` holds out for a
+cycle that has published all 48 hours, so a late run still gets a complete
+forecast instead of a half-written one.
+
+To follow every long cycle instead of one a day, add the other three:
+
+```yaml
+- cron: "30 2,8,14,20 * * *"   # 00Z, 06Z, 12Z and 18Z runs
+```
 
 The runner has `ffmpeg`, so scheduled runs also produce an MP4, uploaded as a
 workflow artifact alongside the GIF.
@@ -148,9 +159,27 @@ UTC−8).
 
 ## Which runs have what
 
-HRRR runs every hour. The `00/06/12/18Z` cycles forecast out to 48 hours;
-every other cycle stops at 18. `--hours` is clamped to whatever the chosen
-cycle supports.
+HRRR runs every hour, but the runs are not all the same length:
+
+| Cycles | Forecast length | Complete by |
+|---|---|---|
+| `00/06/12/18Z` | **48 hours** | cycle + ~1.8 h |
+| every other hour | 18 hours | cycle + ~1.4 h |
+
+`--hours` is clamped to whatever the chosen cycle supports, so asking for 48
+hours from a 15Z run silently gives you 18.
+
+`--extended` restricts the search to the four long cycles:
+
+```bash
+python -m hrrr_smoke --extended --hours 48
+```
+
+Because asking for the extended cycles is really asking for their length, this
+also holds out for a run that has published all the hours requested. If the
+newest long cycle is still integrating, the search falls back to the previous
+one rather than animating a half-written forecast — at 13:24Z the 12Z run has
+only reached f24, so `--extended --hours 48` returns 06Z with its full f00–f48.
 
 NCEP uploads files as the model integrates, so the newest cycle on S3 is
 usually incomplete. By default the scraper walks back from the current hour and
