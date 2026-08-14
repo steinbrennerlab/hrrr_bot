@@ -148,6 +148,11 @@ Pages must be set to deploy from **GitHub Actions** (Settings → Pages → Sour
 The workflow passes `enablement: true`, which provisions it automatically where
 the token is permitted to.
 
+The workflow also runs on pushes to `main` that touch the workflow, `site.py`
+or `archive.py`, so a change to the page publishes itself instead of waiting
+for the next morning's cron. Nothing else triggers it, and its own commits only
+touch `runs/`, so it cannot retrigger itself.
+
 ## The permanent file links
 
 Each successful scheduled run replaces a GitHub Release tagged `latest`, so
