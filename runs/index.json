@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "runs": [
+    {
+      "cycle": "hrrr_smoke_puget_20260814_t14z",
+      "cycle_time": "2026-08-14T14:00:00+00:00",
+      "domain": "unknown",
+      "reference_city": "unknown",
+      "peak_ugm3": null,
+      "peak_at": null,
+      "frames": 0,
+      "files": [
+        "hrrr_smoke_puget_20260814_t14z.gif",
+        "hrrr_smoke_puget_20260814_t14z.mp4"
+      ]
+    },
+    {
+      "cycle": "hrrr_smoke_puget_20260814_t12z",
+      "cycle_time": "2026-08-14T12:00:00+00:00",
+      "domain": "unknown",
+      "reference_city": "unknown",
+      "peak_ugm3": null,
+      "peak_at": null,
+      "frames": 0,
+      "files": [
+        "hrrr_smoke_puget_20260814_t12z.gif",
+        "hrrr_smoke_puget_20260814_t12z.mp4"
+      ]
+    },
+    {
+      "cycle": "hrrr_smoke_puget_20260813_t14z",
+      "cycle_time": "2026-08-13T14:00:00+00:00",
+      "domain": "unknown",
+      "reference_city": "unknown",
+      "peak_ugm3": null,
+      "peak_at": null,
+      "frames": 0,
+      "files": [
+        "hrrr_smoke_puget_20260813_t14z.gif",
+        "hrrr_smoke_puget_20260813_t14z.mp4"
+      ]
+    },
+    {
+      "cycle": "hrrr_smoke_puget_20260813_t12z",
+      "cycle_time": "2026-08-13T12:00:00+00:00",
+      "domain": "unknown",
+      "reference_city": "unknown",
+      "peak_ugm3": null,
+      "peak_at": null,
+      "frames": 0,
+      "files": [
+        "hrrr_smoke_puget_20260813_t12z.gif",
+        "hrrr_smoke_puget_20260813_t12z.mp4"
+      ]
+    },
+    {
+      "cycle": "hrrr_smoke_puget_20260813_t06z",
+      "cycle_time": "2026-08-13T06:00:00+00:00",
+      "domain": "unknown",
+      "reference_city": "unknown",
+      "peak_ugm3": null,
+      "peak_at": null,
+      "frames": 0,
+      "files": [
+        "hrrr_smoke_puget_20260813_t06z.gif"
+      ]
+    },
+    {
+      "cycle": "hrrr_smoke_puget_20260812_t14z",
+      "cycle_time": "2026-08-12T14:00:00+00:00",
+      "domain": "unknown",
+      "reference_city": "unknown",
+      "peak_ugm3": null,
+      "peak_at": null,
+      "frames": 0,
+      "files": [
+        "hrrr_smoke_puget_20260812_t14z.gif",
+        "hrrr_smoke_puget_20260812_t14z.mp4"
+      ]
+    },
+    {
+      "cycle": "hrrr_smoke_puget_20260807_t17z",
+      "cycle_time": "2026-08-07T17:00:00+00:00",
+      "domain": "unknown",
+      "reference_city": "unknown",
+      "peak_ugm3": null,
+      "peak_at": null,
+      "frames": 0,
+      "files": [
+        "hrrr_smoke_puget_20260807_t17z.gif",
+        "hrrr_smoke_puget_20260807_t17z.mp4"
+      ]
+    },
+    {
+      "cycle": "hrrr_smoke_puget_20260807_t16z",
+      "cycle_time": "2026-08-07T16:00:00+00:00",
+      "domain": "unknown",
+      "reference_city": "unknown",
+      "peak_ugm3": null,
+      "peak_at": null,
+      "frames": 0,
+      "files": [
+        "hrrr_smoke_puget_20260807_t16z.gif"
+      ]
+    },
+    {
+      "cycle": "hrrr_smoke_puget_20260806_t15z",
+      "cycle_time": "2026-08-06T15:00:00+00:00",
+      "domain": "unknown",
+      "reference_city": "unknown",
+      "peak_ugm3": null,
+      "peak_at": null,
+      "frames": 0,
+      "files": [
+        "hrrr_smoke_puget_20260806_t15z.gif"
+      ]
+    }
+  ]
+}

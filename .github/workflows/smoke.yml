@@ -85,21 +85,57 @@ jobs:
             --gate-days 1 \
             --hours "$HOURS" \
             --step "$STEP" \
-            --archive runs
+            --archive runs \
+            --prune-days 30 \
+            --prune-keep-above unhealthy
+
+      # Release assets live outside git history, so a permanent link to the
+      # newest animation costs nothing in repository size. Rolling the `latest`
+      # tag keeps the URL below stable forever:
+      #   .../releases/latest/download/puget_smoke_latest.gif
+      - name: Publish as the latest run
+        if: steps.smoke.outputs.rendered == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CYCLE: ${{ steps.smoke.outputs.cycle }}
+        run: |
+          for ext in gif mp4; do
+            src=$(ls out/*."$ext" 2>/dev/null | head -1) || true
+            [ -n "$src" ] && cp "$src" "puget_smoke_latest.$ext"
+          done
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create latest puget_smoke_latest.* \
+            --title "Latest Puget Sound smoke forecast" \
+            --notes "HRRR $CYCLE — ${{ steps.smoke.outputs.summary }}
+
+          This release is replaced on every run, so its download URLs always
+          point at the most recent animation."
 
       - name: Commit the animation
         if: steps.smoke.outputs.rendered == 'true'
+        env:
+          PRUNED: ${{ steps.smoke.outputs.pruned }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add runs
+          # -A so that pruned deletions are staged, not just new files.
+          git add -A runs
           if git diff --cached --quiet; then
             echo "runs/ already had this cycle; nothing to commit."
             exit 0
           fi
+          note=""
+          if [ "${PRUNED:-0}" != "0" ]; then
+            note="
+
+          Pruned $PRUNED quiet run(s) older than 30 days."
+          fi
           git commit -m "Add ${{ steps.smoke.outputs.cycle }} Puget Sound smoke run
 
-          ${{ steps.smoke.outputs.summary }}"
+          ${{ steps.smoke.outputs.summary }}$note"
+          # The scheduled job races nothing, but a manual dispatch can land
+          # while another run is mid-flight.
+          git pull --rebase --autostash origin main
           git push
 
       - name: Upload the animation
