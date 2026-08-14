@@ -35,6 +35,9 @@ class RunRecord:
     peak_at: str | None
     frames: int
     files: list[str] = field(default_factory=list)
+    # City -> peak ug/m^3 over the animation, for the published page. Absent on
+    # entries written before the page existed, hence the default.
+    city_peaks: dict[str, float] = field(default_factory=dict)
 
     @property
     def when(self) -> datetime:

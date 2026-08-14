@@ -3,8 +3,14 @@
 Scrapes NOAA's **HRRR-Smoke** near-surface smoke forecast and turns it into a
 short animation over the greater Puget Sound, labelled in local Pacific time.
 
-**Latest forecast** — these links never change, and always serve the most
-recent run:
+### 👉 [steinbrennerlab.github.io/hrrr_bot](https://steinbrennerlab.github.io/hrrr_bot/)
+
+The page renders the newest animation inline, with the peak per city and the
+recent archive. It refreshes every day — including quiet days, where it reports
+that the check ran and found nothing worth animating, so a stale date always
+means something is actually broken.
+
+Direct files, if you want the raw animation rather than the page:
 
 | | |
 |---|---|
@@ -115,7 +121,34 @@ Severity is taken from the gate's window when the gate ran — that looks back
 over the previous day too, so it reflects the episode rather than just the
 forecast — and from the animation itself otherwise.
 
-## The permanent link
+## The published page
+
+`--site DIR` builds a self-contained page — the newest animation rendered
+inline, the peak per city, and the recent archive — which the workflow deploys
+to GitHub Pages:
+
+```bash
+python -m hrrr_smoke --archive runs --site site
+```
+
+```
+https://steinbrennerlab.github.io/hrrr_bot/
+```
+
+It is rebuilt on **every** run, including ones where the gate declines, so the
+page reports "we checked, it was clean" rather than silently showing stale
+content. A date that stops moving therefore means something really is wrong.
+
+The GIF is the embedded animation rather than the MP4, deliberately: a `<video>`
+whose codec the browser lacks renders an empty box, and a `<video>`'s inner
+fallback only appears when video is unsupported entirely — so the failure mode
+is a blank page. A GIF plays everywhere. The MP4 is offered as a link beside it.
+
+Pages must be set to deploy from **GitHub Actions** (Settings → Pages → Source).
+The workflow passes `enablement: true`, which provisions it automatically where
+the token is permitted to.
+
+## The permanent file links
 
 Each successful scheduled run replaces a GitHub Release tagged `latest`, so
 these URLs are stable forever:

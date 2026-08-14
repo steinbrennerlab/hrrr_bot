@@ -20,6 +20,7 @@ from .fetch import fetch_all
 from .gate import THRESHOLDS, evaluate, find_city
 from .grid import SmokeFrame, city_series, load_frame
 from .render import FrameRenderer
+from .site import build as build_site
 
 log = logging.getLogger("hrrr_smoke")
 
@@ -103,6 +104,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="delete archived runs older than this many days (off by default)",
     )
     keep.add_argument(
+        "--site",
+        type=Path,
+        help="build the published page into this directory (needs --archive)",
+    )
+    keep.add_argument(
+        "--site-repo",
+        default=os.environ.get("GITHUB_REPOSITORY", "steinbrennerlab/hrrr_bot"),
+        help="owner/repo used for archive links on the page",
+    )
+    keep.add_argument(
         "--prune-keep-above",
         choices=sorted(THRESHOLDS),
         default="unhealthy",
@@ -163,6 +174,16 @@ def _reference_peak(
             best = peak
             at = frames[series.index(peak)].valid.isoformat()
     return best, at
+
+
+def _city_peaks(frames: list[SmokeFrame], domain) -> dict[str, float]:
+    """Peak concentration per labelled city, for the manifest and the page."""
+    peaks: dict[str, float] = {}
+    for name, lat, lon in domain.cities:
+        series = city_series(frames, lat, lon)
+        if series:
+            peaks[name] = round(max(series), 1)
+    return peaks
 
 
 def _summarise(frames: list[SmokeFrame], domain, tz: ZoneInfo) -> None:
@@ -255,6 +276,16 @@ def run(argv: list[str] | None = None) -> int:
         log.info("gate: %s", verdict.describe(tz))
         if not verdict.triggered:
             log.info("Nothing worth animating; skipping the render.")
+            # The page still refreshes on a clean day: "we looked, it was fine"
+            # is the answer people want, and a stale date reads as a breakage.
+            if args.site and args.archive:
+                build_site(
+                    args.archive,
+                    args.site,
+                    tz=tz,
+                    repo=args.site_repo,
+                    status=verdict.describe(tz),
+                )
             _github_output(
                 rendered="false",
                 cycle=cycle_id,
@@ -319,6 +350,7 @@ def run(argv: list[str] | None = None) -> int:
                 peak_at=peak_at,
                 frames=len(paths),
                 files=files_for(args.archive, stem),
+                city_peaks=_city_peaks(frames, domain),
             ),
         )
 
@@ -337,6 +369,12 @@ def run(argv: list[str] | None = None) -> int:
                 )
             else:
                 log.info("nothing to prune")
+
+        if args.site:
+            note = verdict.describe(tz) if verdict else None
+            build_site(
+                args.archive, args.site, tz=tz, repo=args.site_repo, status=note
+            )
 
     _summarise(frames, domain, tz)
     _github_output(

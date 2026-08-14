@@ -5,6 +5,7 @@ venv/
 .pytest_cache/
 data/
 out/
+site/
 *.grib2
 *.idx
 *.part
