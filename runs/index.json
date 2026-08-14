@@ -17,11 +17,11 @@
     {
       "cycle": "hrrr_smoke_puget_20260814_t12z",
       "cycle_time": "2026-08-14T12:00:00+00:00",
-      "domain": "unknown",
-      "reference_city": "unknown",
-      "peak_ugm3": null,
-      "peak_at": null,
-      "frames": 0,
+      "domain": "puget",
+      "reference_city": "Seattle",
+      "peak_ugm3": 8.7,
+      "peak_at": "2026-08-15T00:00:00+00:00",
+      "frames": 49,
       "files": [
         "hrrr_smoke_puget_20260814_t12z.gif",
         "hrrr_smoke_puget_20260814_t12z.mp4"
