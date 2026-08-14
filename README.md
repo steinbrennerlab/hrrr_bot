@@ -60,10 +60,21 @@ survives across machines and sessions:
 
 ```
 runs/hrrr_smoke_puget_20260806_t16z.gif
+runs/hrrr_smoke_puget_20260806_t16z.mp4   (only where ffmpeg exists)
 ```
 
-The GIF filename already carries the date and cycle, so re-running the same
-cycle overwrites its own file and a new cycle adds one.
+`--archive` copies **every** animation it produced, so on the GitHub runner —
+which has ffmpeg — both the GIF and the MP4 are committed. The MP4 is roughly
+half the size for the same frames; if the archive ever needs slimming, dropping
+the GIF and keeping the MP4 is the cheapest win.
+
+The filename already carries the date and cycle, so re-running the same cycle
+overwrites its own file and a new cycle adds one.
+
+Size scales with frame count: 18 hours hourly is ~1.2 MB of GIF, 48 hours
+hourly is ~3.3 MB. `--step 2` halves both and is still perfectly readable for
+smoke transport. Git history is not reclaimable, so this is worth watching over
+a full smoke season.
 
 The run also prints when each labelled city peaks:
 
@@ -134,19 +145,23 @@ To follow every long cycle instead of one a day, add the other three:
 - cron: "30 2,8,14,20 * * *"   # 00Z, 06Z, 12Z and 18Z runs
 ```
 
-The runner has `ffmpeg`, so scheduled runs also produce an MP4, uploaded as a
-workflow artifact alongside the GIF.
+The runner has `ffmpeg`, so scheduled runs commit an MP4 into `runs/` alongside
+the GIF, and upload both as a workflow artifact.
 
-Use **Run workflow** to trigger it by hand; the `force` input renders even on a
-clean day, and `threshold` overrides the category for that run.
+Use **Run workflow** to trigger it by hand; `force` renders even on a clean day,
+`threshold` overrides the category, and `step` trades frames for file size.
 
 Two things worth knowing:
 
-- GitHub only runs `schedule` triggers from the **default branch**, so the
-  workflow has no effect until it is merged there.
+- GitHub only runs `schedule` triggers from the **default branch**. This
+  repository's default is `main`, so the workflow is live there — a copy of it
+  on any other branch does nothing.
 - Scheduled workflows are auto-disabled after 60 days of repository inactivity.
   Whether the workflow's own commits reset that clock is not something we have
   confirmed, so check in occasionally if the archive matters.
+
+Observed cron drift has run 26–58 minutes late, which is why the schedule is set
+off the cycle completion time with margin rather than at the hour.
 
 ## A note on "Pacific Standard Time"
 
