@@ -28,9 +28,10 @@ on:
         description: "Hours between frames (2 halves the frame count and file size)"
         default: "1"
 
-# Needed to commit the animation back to runs/.
 permissions:
-  contents: write
+  contents: write   # commit the animation back to runs/
+  pages: write      # publish the page
+  id-token: write   # required by deploy-pages
 
 # Two runs pushing to runs/ at once would race on the same branch.
 concurrency:
@@ -41,6 +42,9 @@ jobs:
   animate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
       - uses: actions/checkout@v4
@@ -86,6 +90,7 @@ jobs:
             --hours "$HOURS" \
             --step "$STEP" \
             --archive runs \
+            --site site \
             --prune-days 30 \
             --prune-keep-above unhealthy
 
@@ -148,6 +153,19 @@ jobs:
             out/*.mp4
           if-no-files-found: error
           retention-days: 30
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy the page
+        id: deploy
+        uses: actions/deploy-pages@v4
 
       - name: Report
         if: always()
