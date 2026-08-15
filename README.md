@@ -337,8 +337,18 @@ Colours are the EPA's PM2.5 AQI categories (2024 breakpoints), so a colour maps
 to a health category rather than an arbitrary scale. Every band is named in the
 legend, so the map is not readable by colour alone. Below 1 µg m⁻³ the overlay
 is fully transparent and the basemap shows through — clean air recedes instead
-of painting the whole region green. The header carries a badge naming the
-category of the peak figure beside it.
+of painting the whole region green.
+
+The `peak` figure in the header counts **only cells inside the domain's lat/lon
+box**. That distinction matters more than it sounds: the HRRR grid is Lambert
+conformal, so a lat/lon box is not a rectangle in grid space, and the clipped
+array has to stay rectangular — about a third of the cells it returns fall
+outside the box, with the corners reaching into British Columbia. On the
+2026-08-14 12Z run the raw maximum was a 4,521 µg m⁻³ BC wildfire at 49.8 N,
+seventy kilometres north of the domain's edge, on a map where every labelled
+city was Good. Those cells are still *drawn*, so smoke visibly arrives from
+outside rather than appearing at the boundary; they are simply not counted when
+summarising the region.
 
 Each model cell is drawn as one flat block of colour — this is a 3 km forecast,
 and interpolating it would invent detail the model never produced. The smoke
@@ -385,7 +395,7 @@ that it guards the things that break silently:
   yet" identically.
 - **Map layout** (`test_labels.py`) — that no city label overlaps another, that
   none covers a neighbour's marker, that legend bands do not collide, and that
-  the header badge names the right category and stays clear of `+N h`. These
+  a fire outside the domain box is not reported as the region's peak. These
   measure the drawn geometry; they fail on the old universal label offset.
 - **The page** (`test_site.py`) — that a clean check is not coloured by a smoky
   archive, that a forced run does not claim it cleared the gate, that the GIF is

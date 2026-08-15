@@ -117,9 +117,8 @@ AQI_COLORS = (
 )
 AQI_OVER = (0.49, 0.00, 0.14, 0.92)  # > 225    hazardous
 
-# Opaque equivalents of the same bands, for chips and badges that sit on a flat
-# background instead of blending over the basemap. Shared so the map's category
-# badge and the page's category chips cannot drift apart.
+# Opaque equivalents of the same bands, for the chips on the page, which sit on
+# a flat background instead of blending over the basemap.
 AQI_SOLID_COLORS = (
     "#9aa7b2",  # clear
     "#5aa95f",  # good
@@ -129,9 +128,6 @@ AQI_SOLID_COLORS = (
     "#8f3f97",  # very unhealthy
     "#7e0023",  # hazardous
 )
-
-# Which of those need white text rather than ink to stay legible.
-AQI_DARK_BANDS = frozenset({4, 5, 6})
 
 
 def band_for(value: float) -> int:

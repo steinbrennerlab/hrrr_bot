@@ -26,14 +26,10 @@ from matplotlib.colors import (
 
 from .config import (
     AQI_COLORS,
-    AQI_DARK_BANDS,
-    AQI_LABELS,
     AQI_LEGEND_LABELS,
     AQI_LEVELS,
     AQI_OVER,
-    AQI_SOLID_COLORS,
     Domain,
-    band_for,
 )
 from .grid import SmokeFrame
 
@@ -50,12 +46,6 @@ LAND = "#f5f2ed"
 # and a title that changes width must not shift the map underneath it.
 _MAP_BOX = (0.035, 0.155, 0.93, 0.735)
 _BAR_BOX = (0.10, 0.080, 0.80, 0.020)
-
-# Width reserved at the top right for "+N h", so the category badge beside it
-# can be right-aligned into a fixed slot instead of chasing the text's width.
-# Sized for the longest lead the 48-hour cycles produce, plus the badge's own
-# rounded padding, which overhangs its anchor.
-_LEAD_SLOT = 0.090
 
 # Single-hue magnitude ramp, for reading concentration rather than health
 # category. Same breakpoints, so the two palettes are directly comparable.
@@ -261,20 +251,6 @@ class FrameRenderer:
         self._lead = self.fig.text(
             right, 0.962, "", fontsize=13, color=MUTED, ha="right", va="center"
         )
-        # The badge names the category the peak figure below it falls in, so
-        # the number is readable without counting bands along the colourbar.
-        # Right-aligned in the slot left of "+N h", which is at most five
-        # characters wide, so the two can never collide however long the
-        # category name gets.
-        self._badge = self.fig.text(
-            right - _LEAD_SLOT,
-            0.962,
-            "",
-            fontsize=8,
-            fontweight="bold",
-            ha="right",
-            va="center",
-        )
         self._meta = self.fig.text(
             right, 0.929, "", fontsize=8.5, color=MUTED, ha="right", va="center"
         )
@@ -307,21 +283,13 @@ class FrameRenderer:
 
         valid = frame.valid.astimezone(self.tz)
         run = frame.run.astimezone(self.tz)
-        peak = float(np.nanmax(frame.values))
-        band = band_for(peak)
         self._title.set_text(f"{valid:%a %b %-d} · {valid:%-I:%M %p} {valid:%Z}")
         self._lead.set_text(f"+{frame.fhr} h")
-        self._badge.set_text(AQI_LABELS[band].upper())
-        self._badge.set_color("white" if band in AQI_DARK_BANDS else INK)
-        self._badge.set_bbox(
-            {
-                "boxstyle": "round,pad=0.34",
-                "facecolor": AQI_SOLID_COLORS[band],
-                "edgecolor": "none",
-            }
-        )
+        # `frame.peak`, not `values.max()`: the array's corners reach outside
+        # the domain box, so the raw maximum is regularly a fire in British
+        # Columbia being reported as a Puget Sound figure.
         self._meta.set_text(
-            f"run {run:%-m/%-d %-I %p %Z}  ·  peak {peak:,.0f} µg m⁻³"
+            f"run {run:%-m/%-d %-I %p %Z}  ·  peak {frame.peak:,.0f} µg m⁻³"
         )
 
         out_path.parent.mkdir(parents=True, exist_ok=True)

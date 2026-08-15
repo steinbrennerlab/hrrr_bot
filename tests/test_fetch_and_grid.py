@@ -71,3 +71,51 @@ def test_unit_conversion_factor():
 
 def test_aqi_levels_are_increasing():
     assert list(AQI_LEVELS) == sorted(AQI_LEVELS)
+
+
+def test_the_domain_box_is_marked_on_the_frame():
+    """The clipped array is rectangular in grid space, not in lat/lon.
+
+    A Lambert grid's rows and columns are not parallels and meridians, so the
+    bounding rows/columns of a lat/lon box overshoot it -- on the Puget Sound
+    domain by about a third of the cells, far enough north to reach fires in
+    British Columbia. The frame carries which cells are genuinely inside so a
+    summary can leave the rest out.
+    """
+    from hrrr_smoke.config import DOMAINS
+
+    domain = DOMAINS["puget"]
+    lats, lons = np.meshgrid(
+        np.linspace(domain.lat_min - 1.0, domain.lat_max + 1.0, 12),
+        np.linspace(domain.lon_min, domain.lon_max, 12),
+        indexing="ij",
+    )
+    values = np.full((12, 12), 5.0)
+    inside = (lats >= domain.lat_min) & (lats <= domain.lat_max)
+    values[0, 0] = 4521.0  # a fire well north of the box
+    assert not inside[0, 0]
+
+    frame = SmokeFrame(
+        fhr=0,
+        run=datetime(2026, 8, 14, 12, tzinfo=UTC),
+        valid=datetime(2026, 8, 14, 12, tzinfo=UTC),
+        lats=lats,
+        lons=lons,
+        values=values,
+        inside=inside,
+    )
+    assert frame.peak == 5.0
+    assert values.max() == 4521.0  # ...still present, and still drawn
+
+
+def test_a_frame_with_no_mask_counts_every_cell():
+    """Hand-built frames are plain rectangles; nothing to exclude."""
+    frame = SmokeFrame(
+        fhr=0,
+        run=datetime(2026, 8, 14, 12, tzinfo=UTC),
+        valid=datetime(2026, 8, 14, 12, tzinfo=UTC),
+        lats=np.zeros((2, 2)),
+        lons=np.zeros((2, 2)),
+        values=np.array([[1.0, 9.0], [3.0, 4.0]]),
+    )
+    assert frame.peak == 9.0

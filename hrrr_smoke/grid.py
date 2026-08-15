@@ -22,6 +22,27 @@ class SmokeFrame:
     lats: np.ndarray  # 2-D
     lons: np.ndarray  # 2-D, degrees east in [-180, 180]
     values: np.ndarray  # 2-D, ug m^-3
+    # 2-D bool: which cells are genuinely within the domain's lat/lon box.
+    # The array has to stay rectangular in *grid* space, which on a Lambert
+    # grid means its corners reach outside the box -- about a third of the
+    # cells, far enough to pick up fires in British Columbia. Those are still
+    # drawn, so smoke visibly arrives from outside rather than appearing at the
+    # edge, but they must not be counted when summarising the domain.
+    # `None` means every cell counts, which is what a synthetic frame built
+    # from a plain rectangle wants.
+    inside: np.ndarray | None = None
+
+    @property
+    def peak(self) -> float:
+        """Highest concentration inside the domain box.
+
+        Not `values.max()`: that reports whatever fire happens to sit in a
+        corner the projection dragged in, under a headline naming the region
+        it is not in.
+        """
+        if self.inside is None:
+            return float(np.nanmax(self.values))
+        return float(np.nanmax(np.where(self.inside, self.values, np.nan)))
 
 
 def _as_utc(value) -> datetime:
@@ -70,6 +91,7 @@ def load_frame(path: Path, fhr: int, domain: Domain) -> SmokeFrame:
         lats=lats[y0:y1, x0:x1],
         lons=lons[y0:y1, x0:x1],
         values=values[y0:y1, x0:x1] * KG_M3_TO_UG_M3,
+        inside=inside[y0:y1, x0:x1],
     )
 
 
