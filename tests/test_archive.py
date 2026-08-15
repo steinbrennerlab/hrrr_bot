@@ -4,6 +4,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from hrrr_smoke.archive import (
+    ADOPTED,
+    FORCED,
+    GATED,
     MANIFEST,
     RunRecord,
     adopt_orphans,
@@ -290,3 +293,79 @@ def test_a_rerun_that_got_worse_becomes_archival(tmp_path):
     _touch(tmp_path, worse)
     record_run(tmp_path, worse)
     assert prune(tmp_path, keep_days=30, keep_above=UNHEALTHY, now=NOW) == []
+
+
+# --- provenance and the forecast window --------------------------------------
+
+
+def test_a_manifest_written_before_these_fields_still_loads(tmp_path):
+    """The v1 manifests already committed must not need a migration."""
+    (tmp_path / MANIFEST).write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "runs": [
+                    {
+                        "cycle": "puget_20260813_t12z",
+                        "cycle_time": NOW.isoformat(),
+                        "domain": "puget",
+                        "reference_city": "Seattle",
+                        "peak_ugm3": 8.7,
+                        "peak_at": None,
+                        "frames": 49,
+                        "files": ["puget_20260813_t12z.gif"],
+                        "city_peaks": {},
+                    }
+                ],
+            }
+        )
+    )
+    (record,) = load(tmp_path)
+    # An entry that never said why it exists must not be read as having
+    # cleared a gate it may never have been through.
+    assert record.origin == ADOPTED
+    assert record.gate_threshold is None
+    assert record.covers is None
+
+
+def test_provenance_round_trips(tmp_path):
+    record = _record("puget_x", peak=8.7, age_days=0)
+    record.origin = FORCED
+    record.gate_threshold = None
+    record.valid_from = NOW.isoformat()
+    record.valid_to = (NOW + timedelta(hours=48)).isoformat()
+    save(tmp_path, [record])
+
+    (loaded,) = load(tmp_path)
+    assert loaded.origin == FORCED
+    start, end = loaded.covers
+    assert (end - start) == timedelta(hours=48)
+
+
+def test_a_gated_run_keeps_the_threshold_it_cleared(tmp_path):
+    record = _record("puget_x", peak=61.0, age_days=0)
+    record.origin = GATED
+    record.gate_threshold = "unhealthy"
+    save(tmp_path, [record])
+    assert load(tmp_path)[0].gate_threshold == "unhealthy"
+
+
+def test_adopted_files_are_marked_as_such(tmp_path):
+    (tmp_path / "loose_20260814_t12z.gif").write_bytes(b"gif")
+    (record,) = adopt_orphans(tmp_path, [])
+    assert record.origin == ADOPTED
+
+
+def test_the_poster_is_a_file_of_the_run_but_not_an_animation(tmp_path):
+    record = _record(
+        "puget_x",
+        peak=12.0,
+        age_days=0,
+        files=["puget_x.gif", "puget_x.mp4", "puget_x.png"],
+    )
+    assert record.animations == ["puget_x.gif", "puget_x.mp4"]
+    # ...and it is still pruned with the rest of the run.
+    _touch(tmp_path, record)
+    record_run(tmp_path, record)
+    prune(tmp_path, keep_days=0, keep_above=UNHEALTHY, now=NOW + timedelta(days=1))
+    assert not (tmp_path / "puget_x.png").exists()

@@ -65,8 +65,16 @@ out/frames_20260806_t15z_puget/f000.png ...  the individual frames
 data/grib/smoke_20260806_t15z_f00.grib2 ...  cached records, reused on re-runs
 ```
 
-An MP4 is written alongside the GIF when `ffmpeg` is on `PATH`; without it you
-just get the GIF.
+An MP4 — plus a poster still for the page's video — is written alongside the GIF
+when `ffmpeg` is on `PATH`; without it you just get the GIF.
+
+The GIF is quantised against **one palette built from every frame at once**,
+with dithering off. Per-frame palettes make an unchanging region — the water,
+the coastline, a steady band of Moderate — land on a slightly different colour
+index each hour and shimmer as the loop plays; one shared palette makes those
+pixels bit-identical, which also hands the encoder long runs to compress. On the
+48-hour run that is 2.8 MB → 1.3 MB for the same frames. `gifsicle -O3` takes
+another ~4% when it is installed, and is skipped silently when it is not.
 
 `out/` and `data/` are ignored by git — they are scratch. Animations worth
 keeping get copied into `runs/`, which **is** committed, so the archive
@@ -75,6 +83,7 @@ survives across machines and sessions:
 ```
 runs/hrrr_smoke_puget_20260806_t16z.gif
 runs/hrrr_smoke_puget_20260806_t16z.mp4   (only where ffmpeg exists)
+runs/hrrr_smoke_puget_20260806_t16z.png   the video's poster frame
 ```
 
 `--archive` copies **every** animation it produced, so on the GitHub runner —
@@ -85,10 +94,9 @@ the GIF and keeping the MP4 is the cheapest win.
 The filename already carries the date and cycle, so re-running the same cycle
 overwrites its own file and a new cycle adds one.
 
-Size scales with frame count: 18 hours hourly is ~1.2 MB of GIF, 48 hours
-hourly is ~3.3 MB. `--step 2` halves both and is still perfectly readable for
-smoke transport. Git history is not reclaimable, which is what the retention
-policy below is for.
+Size scales with frame count: 48 hours hourly is ~1.3 MB of GIF and ~0.8 MB of
+MP4. `--step 2` halves both and is still perfectly readable for smoke transport.
+Git history is not reclaimable, which is what the retention policy below is for.
 
 ## Retention
 
@@ -146,10 +154,30 @@ It is rebuilt on **every** run, including ones where the gate declines, so the
 page reports "we checked, it was clean" rather than silently showing stale
 content. A date that stops moving therefore means something really is wrong.
 
-The GIF is the embedded animation rather than the MP4, deliberately: a `<video>`
-whose codec the browser lacks renders an empty box, and a `<video>`'s inner
-fallback only appears when video is unsupported entirely — so the failure mode
-is a blank page. A GIF plays everywhere. The MP4 is offered as a link beside it.
+### What the page shows
+
+The **latest forecast** card holds the animation on its own white surface, with
+a summary row underneath: model run, forecast window, reference-city peak,
+category, and the last check. Below that, the peak per city and the archive.
+
+**Today's check and the latest animation are separate things**, and the page
+says so. On a clean day following a smoky one they disagree — the check is
+green, the newest animation is red — so the status banner is coloured from the
+check's own reading and never from the archived run. The card also states why
+that particular animation exists: `origin` in the manifest records whether the
+gate passed it, someone forced it, or it predates the manifest, so the page
+never claims a run cleared a threshold it was never measured against.
+
+The **MP4 is the player** and the GIF is the fallback. The MP4 is roughly half
+the weight, and `<video>` gives real controls, a poster frame while it loads,
+and a way to honour `prefers-reduced-motion` — autoplay is added by script only
+when the reader has not asked for stillness, since markup cannot take it back.
+The GIF still ships for the one case `<video>` handles badly: a browser without
+the codec paints an empty box rather than falling through to inner content, so
+an `error` listener swaps the GIF in. Its URL sits in `data-src` until then, so
+nobody downloads it twice, and a `<noscript>` copy covers scripting being off.
+
+Tables stack into labelled rows below 600 px rather than scrolling sideways.
 
 Pages must be set to deploy from **GitHub Actions** (Settings → Pages → Source).
 The workflow passes `enablement: true`, which provisions it automatically where
@@ -309,7 +337,22 @@ Colours are the EPA's PM2.5 AQI categories (2024 breakpoints), so a colour maps
 to a health category rather than an arbitrary scale. Every band is named in the
 legend, so the map is not readable by colour alone. Below 1 µg m⁻³ the overlay
 is fully transparent and the basemap shows through — clean air recedes instead
-of painting the whole region green.
+of painting the whole region green. The header carries a badge naming the
+category of the peak figure beside it.
+
+Each model cell is drawn as one flat block of colour — this is a 3 km forecast,
+and interpolating it would invent detail the model never produced. The smoke
+layer is antialiased all the same, which is not the same thing: it decides how a
+cell's *boundary* lands on the pixel grid, not what is inside it. Without it
+each quad rounds its edges to whole pixels, neighbours disagree about who owns
+the shared edge, and the translucent palette turns the hairline gaps into a mesh
+drawn over the entire map.
+
+City labels carry a per-city offset and alignment in `config.py`, in points
+rather than degrees so the gap is the same on every domain. That is a judgement
+about one particular map — Bremerton's name is long enough to run over Seattle's
+marker 20 km away, so it is thrown west over Hood Canal — and it lives beside
+the coordinates rather than in the renderer.
 
 | µg m⁻³ | Category |
 |---|---|
@@ -332,8 +375,35 @@ measurement, and it does not include non-smoke PM2.5. For observations, see
 .venv/bin/python -m pytest tests -q
 ```
 
-The suite covers cycle selection, `.idx` byte-range parsing, grid subsetting
-and the colour bands; it stubs out S3 so it runs offline.
+The suite covers cycle selection, `.idx` byte-range parsing, grid subsetting,
+retention and the colour bands; it stubs out S3 so it runs offline. On top of
+that it guards the things that break silently:
+
+- **The GIF's shape** (`test_animate.py`) — frame timings, canvas size, a
+  file-size ceiling, and that no frame carries its own colour table, walked out
+  of the GIF bytes because Pillow reports "no local palette" and "not decoded
+  yet" identically.
+- **Map layout** (`test_labels.py`) — that no city label overlaps another, that
+  none covers a neighbour's marker, that legend bands do not collide, and that
+  the header badge names the right category and stays clear of `+N h`. These
+  measure the drawn geometry; they fail on the old universal label offset.
+- **The page** (`test_site.py`) — that a clean check is not coloured by a smoky
+  archive, that a forced run does not claim it cleared the gate, that the GIF is
+  not eagerly fetched behind the video, and that every cell carries the label
+  the stacked layout needs.
+
+`test_page_layout.py` drives the built page in Chromium for the two things HTML
+assertions cannot see — whether it overflows a phone, and whether the video/GIF
+handoff actually fires — and takes screenshots at 390 px and 1280 px. It skips
+where Playwright or a browser is missing, so it is optional:
+
+```bash
+.venv/bin/pip install playwright && .venv/bin/playwright install chromium
+.venv/bin/python -m pytest tests/test_page_layout.py -q
+```
+
+Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` if a Chromium is installed somewhere
+Playwright does not look.
 
 ## Layout
 
@@ -343,7 +413,10 @@ hrrr_smoke/
   fetch.py     .idx parsing + range requests + on-disk cache
   grid.py      GRIB decode, lat/lon clip to the domain
   render.py    per-frame map drawing
-  animate.py   frames -> GIF / MP4
+  animate.py   frames -> GIF / MP4 / poster
+  gate.py      whether a cycle is worth animating at all
+  archive.py   the runs/ manifest and its retention rules
+  site.py      the published page
   cli.py       argument handling
-  config.py    domains, cities, palettes
+  config.py    domains, cities, label offsets, palettes
 ```

@@ -15,7 +15,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+# playwright drives the published page in a real browser. The tests that use it
+# skip cleanly without it, so it is optional rather than a test requirement.
+dev = ["pytest>=8.0", "ruff>=0.6", "playwright>=1.44"]
 
 [project.scripts]
 hrrr-smoke = "hrrr_smoke.cli:main"

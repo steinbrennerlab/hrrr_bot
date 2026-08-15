@@ -12,14 +12,15 @@ from zoneinfo import ZoneInfo
 
 import requests
 
-from .animate import make_gif, make_mp4
-from .archive import RunRecord, files_for, prune, record_run
+from .animate import make_gif, make_mp4, make_poster
+from .archive import FORCED, GATED, RunRecord, files_for, prune, record_run
 from .catalog import Cycle, find_latest_cycle, parse_cycle, select_fhrs
 from .config import DEFAULT_TZ, DOMAINS
 from .fetch import fetch_all
 from .gate import THRESHOLDS, evaluate, find_city
 from .grid import SmokeFrame, city_series, load_frame
 from .render import FrameRenderer
+from .site import Check
 from .site import build as build_site
 
 log = logging.getLogger("hrrr_smoke")
@@ -172,10 +173,10 @@ def _reference_peak(
     best = gate_peak or 0.0
     at: str | None = None
     try:
-        _, lat, lon = find_city(domain, city)
+        found = find_city(domain, city)
     except ValueError:
         return best, None
-    series = city_series(frames, lat, lon)
+    series = city_series(frames, found.lat, found.lon)
     if series:
         peak = max(series)
         if peak >= best:
@@ -187,10 +188,10 @@ def _reference_peak(
 def _city_peaks(frames: list[SmokeFrame], domain) -> dict[str, float]:
     """Peak concentration per labelled city, for the manifest and the page."""
     peaks: dict[str, float] = {}
-    for name, lat, lon in domain.cities:
-        series = city_series(frames, lat, lon)
+    for city in domain.cities:
+        series = city_series(frames, city.lat, city.lon)
         if series:
-            peaks[name] = round(max(series), 1)
+            peaks[city.name] = round(max(series), 1)
     return peaks
 
 
@@ -199,13 +200,13 @@ def _summarise(frames: list[SmokeFrame], domain, tz: ZoneInfo) -> None:
     if not frames:
         return
     print("\nPeak near-surface smoke by city (µg m⁻³):")
-    for name, lat, lon in domain.cities:
-        series = city_series(frames, lat, lon)
+    for city in domain.cities:
+        series = city_series(frames, city.lat, city.lon)
         if not series:
             continue
         peak = max(series)
         when = frames[series.index(peak)].valid.astimezone(tz)
-        print(f"  {name:<14} {peak:6.1f}   at {when:%a %-I %p %Z}")
+        print(f"  {city.name:<14} {peak:6.1f}   at {when:%a %-I %p %Z}")
 
 
 def run(argv: list[str] | None = None) -> int:
@@ -292,7 +293,7 @@ def run(argv: list[str] | None = None) -> int:
                     args.site,
                     tz=tz,
                     repo=args.site_repo,
-                    status=verdict.describe(tz),
+                    check=Check.from_gate(verdict),
                 )
             _github_output(
                 rendered="false",
@@ -331,15 +332,17 @@ def run(argv: list[str] | None = None) -> int:
 
     stem = f"hrrr_smoke_{args.domain}_{cycle_id}"
     gif = make_gif(paths, args.out / f"{stem}.gif", fps=args.fps)
-    animations = [gif]
+    products = [gif]
     if not args.no_mp4:
         mp4 = make_mp4(paths, args.out / f"{stem}.mp4", fps=args.fps)
         if mp4:
-            animations.append(mp4)
+            products.append(mp4)
+            # Only worth carrying when there is a video to put it behind.
+            products.append(make_poster(paths, args.out / f"{stem}.png"))
 
     pruned: list = []
     if args.archive:
-        copied = _archive(animations, args.archive)
+        copied = _archive(products, args.archive)
         gif = copied[0]
 
         peak, peak_at = _reference_peak(
@@ -359,6 +362,13 @@ def run(argv: list[str] | None = None) -> int:
                 frames=len(paths),
                 files=files_for(args.archive, stem),
                 city_peaks=_city_peaks(frames, domain),
+                # Without this the page can only guess, and its guess -- that
+                # every archived run cleared the gate -- is wrong for exactly
+                # the runs someone went out of their way to ask for.
+                origin=GATED if verdict else FORCED,
+                gate_threshold=args.gate_threshold if verdict else None,
+                valid_from=frames[0].valid.isoformat(),
+                valid_to=frames[-1].valid.isoformat(),
             ),
         )
 
@@ -380,9 +390,12 @@ def run(argv: list[str] | None = None) -> int:
                 log.info("nothing to prune")
 
         if args.site:
-            note = verdict.describe(tz) if verdict else None
             build_site(
-                args.archive, args.site, tz=tz, repo=args.site_repo, status=note
+                args.archive,
+                args.site,
+                tz=tz,
+                repo=args.site_repo,
+                check=Check.from_gate(verdict) if verdict else None,
             )
 
     _summarise(frames, domain, tz)

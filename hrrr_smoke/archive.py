@@ -19,7 +19,16 @@ from .config import EXTENDED_CYCLES
 log = logging.getLogger(__name__)
 
 MANIFEST = "index.json"
-VERSION = 1
+VERSION = 2
+
+# Why a run exists at all. The archive is not "every cycle where Seattle hit
+# Moderate": a manual dispatch can force a render on a clear day, and the runs
+# predating the manifest were never measured. Recording which is which is what
+# lets the page describe a run truthfully instead of asserting the gate's rule
+# over entries that never went through it.
+GATED = "gated"  # the gate ran and the reference city cleared the threshold
+FORCED = "forced"  # rendered on request, whatever the reference city was doing
+ADOPTED = "adopted"  # found beside the manifest, provenance unknown
 
 # Archived names end in the cycle they came from, e.g. `..._20260814_t12z`.
 _STEM_CYCLE = re.compile(r"_(\d{8})_t(\d{2})z$")
@@ -41,9 +50,34 @@ class RunRecord:
     # entries written before the page existed, hence the default.
     city_peaks: dict[str, float] = field(default_factory=dict)
 
+    # Everything below arrived after the first manifests were written, so every
+    # field carries a default and an older entry loads unchanged.
+    origin: str = ADOPTED
+    # The category the gate demanded, when there was a gate. Kept alongside the
+    # peak because the threshold is configurable: "cleared Moderate" and
+    # "cleared Unhealthy" are different claims about the same number.
+    gate_threshold: str | None = None
+    # Valid time of the first and last frame, i.e. what the animation covers.
+    valid_from: str | None = None
+    valid_to: str | None = None
+
     @property
     def when(self) -> datetime:
         return datetime.fromisoformat(self.cycle_time)
+
+    @property
+    def covers(self) -> tuple[datetime, datetime] | None:
+        """The forecast window the animation spans, when it was recorded."""
+        if not (self.valid_from and self.valid_to):
+            return None
+        return datetime.fromisoformat(self.valid_from), datetime.fromisoformat(
+            self.valid_to
+        )
+
+    @property
+    def animations(self) -> list[str]:
+        """Just the playable files, without the poster still."""
+        return [f for f in self.files if f.endswith((".gif", ".mp4"))]
 
     @property
     def is_extended(self) -> bool:
@@ -157,6 +191,7 @@ def adopt_orphans(archive_dir: Path, records: list[RunRecord]) -> list[RunRecord
                 peak_at=None,
                 frames=0,
                 files=names,
+                origin=ADOPTED,
             )
         )
         log.info("adopted unmanaged archive entry %s", stem)
