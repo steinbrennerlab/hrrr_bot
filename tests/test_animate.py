@@ -5,6 +5,7 @@ a duration that stopped pausing, a canvas that moved, a file that quietly grew
 past what is reasonable to serve on a phone.
 """
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -21,19 +22,50 @@ PER_FRAME_MS = 250
 MAX_GIF_BYTES = 12_000_000
 
 
+# The synthetic frame: a fixed left half, and a band that moves across the
+# right. Named so a test can look at one without the other.
+SIZE = (160, 90)
+STATIC = (0, 0, 80, 90)
+# A rectangle well inside the moving band on frame 0, which is one flat colour.
+FLAT = ((90, 20), (110, 60))
+BANDS = ("#e0bc16", "#d62529", "#8f3f97", "#5aa95f", "#e07b18", "#7e0023")
+
+
 @pytest.fixture
 def frames(tmp_path) -> list[Path]:
-    """A short series that changes over a fixed background, like the real map."""
+    """A short series that changes over a fixed background, like the real map.
+
+    The fixed half is a colour *gradient* rather than a flat fill, on purpose.
+    A quantiser fitting a palette to one frame at a time has to spend its 256
+    slots on whichever colours that frame contains, so a rich static region
+    lands slightly differently as the moving band's colours compete with it --
+    which is exactly the shimmer these guard against. Two flat colours would
+    survive per-frame quantisation unchanged and prove nothing.
+    """
     paths = []
-    for i in range(6):
-        im = Image.new("RGB", (120, 90), "#f5f2ed")
+    for i, band in enumerate(BANDS):
+        im = Image.new("RGB", (160, 90))
+        pixels = im.load()
+        for x in range(STATIC[2]):
+            for y in range(STATIC[3]):
+                pixels[x, y] = (60 + x * 2, 90 + y, 200 - x)
         draw = ImageDraw.Draw(im)
-        draw.rectangle((0, 60, 120, 90), fill="#dbe6ee")  # unchanging "water"
-        draw.rectangle((10 + i * 8, 10, 40 + i * 8, 40), fill="#e0bc16")  # "smoke"
+        draw.rectangle((80, 0, 160, 90), fill="#f5f2ed")
+        draw.rectangle((85 + i * 10, 10, 115 + i * 10, 70), fill=band)
         path = tmp_path / f"f{i:03d}.png"
         im.save(path)
         paths.append(path)
     return paths
+
+
+def _static_renderings(path: Path) -> int:
+    """How many different ways the unchanging region got drawn."""
+    seen = set()
+    with Image.open(path) as im:
+        for i in range(im.n_frames):
+            im.seek(i)
+            seen.add(im.convert("RGB").crop(STATIC).tobytes())
+    return len(seen)
 
 
 def test_gif_holds_its_first_and_last_frames(frames, tmp_path):
@@ -63,57 +95,45 @@ def test_gif_keeps_every_frame_and_the_canvas_size(frames, tmp_path):
     gif = make_gif(frames, tmp_path / "a.gif", fps=FPS)
     with Image.open(gif) as im:
         assert im.n_frames == len(frames)
-        assert im.size == (120, 90)
-
-
-def _local_colour_tables(path: Path) -> int:
-    """How many frames carry their own palette instead of using the global one.
-
-    Walked out of the bytes because that is where the property lives: Pillow
-    reports a frame with no local table as having no palette at all, which
-    reads the same as a frame it simply has not decoded yet.
-    """
-    data = path.read_bytes()
-    packed = data[10]
-    i = 13 + (3 << ((packed & 0x07) + 1) if packed & 0x80 else 0)
-    count = 0
-
-    def skip_sub_blocks(j: int) -> int:
-        while data[j]:
-            j += data[j] + 1
-        return j + 1
-
-    while i < len(data) and data[i] != 0x3B:  # 0x3B = trailer
-        if data[i] == 0x21:  # extension: label, then sub-blocks
-            i = skip_sub_blocks(i + 2)
-        elif data[i] == 0x2C:  # image descriptor
-            flags = data[i + 9]
-            if flags & 0x80:
-                count += 1
-                i += 10 + (3 << ((flags & 0x07) + 1))
-            else:
-                i += 10
-            i = skip_sub_blocks(i + 1)  # LZW minimum code size, then data
-        else:
-            break
-    return count
-
-
-def test_every_frame_shares_one_palette(frames, tmp_path):
-    """Per-frame palettes are what make a static region shimmer as it loops."""
-    gif = make_gif(frames, tmp_path / "a.gif", fps=FPS)
-    assert _local_colour_tables(gif) == 0
+        assert im.size == SIZE
 
 
 def test_unchanging_pixels_are_identical_across_frames(frames, tmp_path):
-    """The other half of the same promise, measured on the pixels."""
+    """The anti-shimmer promise, measured where a reader would see it break.
+
+    Asserted on decoded pixels rather than on how the palette is stored: a
+    shared palette can legitimately be written as one global colour table or as
+    identical local ones, and which you get depends on Pillow's optimiser and
+    on whether gifsicle ran. What must not vary is the picture.
+    """
     gif = make_gif(frames, tmp_path / "a.gif", fps=FPS)
-    with Image.open(gif) as im:
-        water = set()
-        for i in range(im.n_frames):
-            im.seek(i)
-            water.add(im.convert("RGB").getpixel((5, 80)))
-    assert len(water) == 1
+    assert _static_renderings(gif) == 1
+
+
+def test_per_frame_palettes_would_fail_that(frames, tmp_path):
+    """The negative control, so the test above cannot pass vacuously."""
+    images = [Image.open(p).convert("RGB") for p in frames]
+    quantised = [im.quantize(colors=256) for im in images]
+    out = tmp_path / "per-frame.gif"
+    quantised[0].save(
+        out,
+        save_all=True,
+        append_images=quantised[1:],
+        duration=250,
+        loop=0,
+        optimize=True,
+    )
+    assert _static_renderings(out) == len(frames)
+
+
+def test_the_palette_is_shared_even_without_gifsicle(frames, tmp_path, monkeypatch):
+    """gifsicle is optional, so it must not be what makes this true."""
+    real = shutil.which
+    monkeypatch.setattr(
+        shutil, "which", lambda name: None if name == "gifsicle" else real(name)
+    )
+    gif = make_gif(frames, tmp_path / "a.gif", fps=FPS)
+    assert _static_renderings(gif) == 1
 
 
 def test_frames_are_not_dithered(frames, tmp_path):
@@ -121,10 +141,11 @@ def test_frames_are_not_dithered(frames, tmp_path):
     gif = make_gif(frames, tmp_path / "a.gif", fps=FPS)
     with Image.open(gif) as im:
         im.seek(0)
+        rgb = im.convert("RGB")
         block = [
-            im.convert("RGB").getpixel((x, y))
-            for x in range(14, 36)
-            for y in range(14, 36)
+            rgb.getpixel((x, y))
+            for x in range(FLAT[0][0], FLAT[1][0])
+            for y in range(FLAT[0][1], FLAT[1][1])
         ]
     assert len(set(block)) == 1
 
@@ -143,8 +164,8 @@ def test_poster_is_a_still_of_the_chosen_frame(frames, tmp_path):
     poster = make_poster(frames, tmp_path / "p.png", index=0)
     with Image.open(poster) as im:
         assert im.format == "PNG"
-        assert im.size == (120, 90)
-        assert im.convert("RGB").getpixel((20, 20)) == (224, 188, 22)
+        assert im.size == SIZE
+        assert im.convert("RGB").getpixel(FLAT[0]) == (224, 188, 22)  # #e0bc16
 
 
 def test_poster_needs_frames(tmp_path):
