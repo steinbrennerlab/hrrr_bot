@@ -181,6 +181,91 @@ def test_files_for_groups_by_stem(tmp_path):
     assert files_for(tmp_path, "run_a") == ["run_a.gif", "run_a.mp4"]
 
 
+def _at_hour(cycle: str, hour: int, *, peak=None, age_days=1) -> RunRecord:
+    when = (NOW - timedelta(days=age_days)).replace(hour=hour)
+    return RunRecord(
+        cycle=cycle,
+        cycle_time=when.isoformat(),
+        domain="puget",
+        reference_city="Seattle",
+        peak_ugm3=peak,
+        peak_at=None,
+        frames=25,
+        files=[f"{cycle}.gif"],
+    )
+
+
+def test_only_the_48_hour_cycles_count_as_extended():
+    assert _at_hour("a", 0).is_extended
+    assert _at_hour("a", 6).is_extended
+    assert _at_hour("a", 12).is_extended
+    assert _at_hour("a", 18).is_extended
+    for hour in (1, 5, 14, 15, 17, 23):
+        assert not _at_hour("a", hour).is_extended
+
+
+def test_extended_only_drops_short_cycles_whatever_their_age(tmp_path):
+    short = _at_hour("short", 14, peak=5.0, age_days=0)  # today, would be kept
+    long_ = _at_hour("long", 12, peak=5.0, age_days=0)
+    for record in (short, long_):
+        _touch(tmp_path, record)
+    save(tmp_path, [short, long_])
+
+    removed = prune(
+        tmp_path, keep_days=30, keep_above=UNHEALTHY, extended_only=True, now=NOW
+    )
+    assert [r.cycle for r in removed] == ["short"]
+    assert not (tmp_path / "short.gif").exists()
+    assert (tmp_path / "long.gif").exists()
+
+
+def test_extended_only_drops_short_cycles_even_when_extreme(tmp_path):
+    # The cycle hour is recoverable with certainty, so this is not a guess and
+    # it outranks the keep-the-severe rule.
+    bad = _at_hour("short_but_bad", 15, peak=400.0, age_days=0)
+    _touch(tmp_path, bad)
+    save(tmp_path, [bad])
+
+    removed = prune(
+        tmp_path, keep_days=30, keep_above=UNHEALTHY, extended_only=True, now=NOW
+    )
+    assert [r.cycle for r in removed] == ["short_but_bad"]
+
+
+def test_extended_only_drops_short_cycles_even_when_unmeasured(tmp_path):
+    unknown = _at_hour("short_unknown", 17, peak=None, age_days=0)
+    _touch(tmp_path, unknown)
+    save(tmp_path, [unknown])
+
+    removed = prune(
+        tmp_path, keep_days=30, keep_above=UNHEALTHY, extended_only=True, now=NOW
+    )
+    assert [r.cycle for r in removed] == ["short_unknown"]
+
+
+def test_extended_only_still_honours_the_severity_rule_for_long_cycles(tmp_path):
+    quiet_old = _at_hour("long_quiet", 12, peak=5.0, age_days=90)
+    bad_old = _at_hour("long_bad", 6, peak=300.0, age_days=90)
+    for record in (quiet_old, bad_old):
+        _touch(tmp_path, record)
+    save(tmp_path, [quiet_old, bad_old])
+
+    removed = prune(
+        tmp_path, keep_days=30, keep_above=UNHEALTHY, extended_only=True, now=NOW
+    )
+    assert [r.cycle for r in removed] == ["long_quiet"]
+    assert (tmp_path / "long_bad.gif").exists()
+
+
+def test_short_cycles_survive_when_the_flag_is_off(tmp_path):
+    short = _at_hour("short", 14, peak=5.0, age_days=0)
+    _touch(tmp_path, short)
+    save(tmp_path, [short])
+
+    assert prune(tmp_path, keep_days=30, keep_above=UNHEALTHY, now=NOW) == []
+    assert (tmp_path / "short.gif").exists()
+
+
 def test_the_manifest_itself_is_never_adopted(tmp_path):
     save(tmp_path, [])
     assert adopt_orphans(tmp_path, []) == []

@@ -108,12 +108,19 @@ reached the threshold is kept forever.
 ordinary summer afternoon, but Unhealthy is a genuine smoke event — rare enough
 to be worth archiving, common enough that the archive is not empty.
 
+`--prune-non-extended` additionally drops anything that is not from a 48-hour
+`00/06/12/18Z` cycle, whatever its age or severity, so the archive and the page
+only ever show the long forecasts. This is the one rule that overrides the two
+below: unlike severity, which an old entry may simply never have recorded, the
+cycle hour is recoverable with certainty from the run's own timestamp, so it is
+not a guess.
+
 Two deliberate safety properties:
 
-- **An unmeasured run is never deleted.** Files archived before the manifest
-  existed are adopted with `peak_ugm3: null` and always kept. The manifest
-  cannot prove they were quiet, and deleting on a guess is the one irreversible
-  mistake available here.
+- **An unmeasured run is never deleted** by the severity rule. Files archived
+  before the manifest existed are adopted with `peak_ugm3: null` and always
+  kept. The manifest cannot prove they were quiet, and deleting on a guess is
+  the one irreversible mistake available here.
 - Pruning runs **only after a new animation is archived**, so a quiet stretch
   never quietly empties the directory.
 
@@ -147,6 +154,11 @@ is a blank page. A GIF plays everywhere. The MP4 is offered as a link beside it.
 Pages must be set to deploy from **GitHub Actions** (Settings → Pages → Source).
 The workflow passes `enablement: true`, which provisions it automatically where
 the token is permitted to.
+
+The workflow also runs on pushes to `main` that touch the workflow, `site.py`
+or `archive.py`, so a change to the page publishes itself instead of waiting
+for the next morning's cron. Nothing else triggers it, and its own commits only
+touch `runs/`, so it cannot retrigger itself.
 
 ## The permanent file links
 

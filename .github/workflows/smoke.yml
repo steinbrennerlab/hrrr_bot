@@ -10,6 +10,17 @@ on:
     # holds out for a cycle that has published all 48 hours, so a late run
     # still gets a complete forecast rather than a half-written one.
     - cron: "30 14 * * *"
+
+  # A change to the page or the workflow should publish itself rather than wait
+  # for tomorrow's cron. Without this, merging a Pages change leaves the site
+  # un-deployed and looking broken until the next scheduled run.
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/smoke.yml"
+      - "hrrr_smoke/site.py"
+      - "hrrr_smoke/archive.py"
+
   workflow_dispatch:
     inputs:
       force:
@@ -92,7 +103,8 @@ jobs:
             --archive runs \
             --site site \
             --prune-days 30 \
-            --prune-keep-above unhealthy
+            --prune-keep-above unhealthy \
+            --prune-non-extended
 
       # Release assets live outside git history, so a permanent link to the
       # newest animation costs nothing in repository size. Rolling the `latest`

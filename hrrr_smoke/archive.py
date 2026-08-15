@@ -14,6 +14,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from .config import EXTENDED_CYCLES
+
 log = logging.getLogger(__name__)
 
 MANIFEST = "index.json"
@@ -42,6 +44,11 @@ class RunRecord:
     @property
     def when(self) -> datetime:
         return datetime.fromisoformat(self.cycle_time)
+
+    @property
+    def is_extended(self) -> bool:
+        """From one of the cycles that forecasts out to 48 hours."""
+        return self.when.hour in EXTENDED_CYCLES
 
     def is_archival(self, keep_above: float) -> bool:
         """Bad enough to keep regardless of age.
@@ -170,12 +177,19 @@ def prune(
     *,
     keep_days: int,
     keep_above: float,
+    extended_only: bool = False,
     now: datetime | None = None,
 ) -> list[RunRecord]:
     """Delete runs older than `keep_days` that never reached `keep_above`.
 
     Returns the records that were removed. Anything at or above the threshold
     is kept forever -- those are the events worth looking back at.
+
+    `extended_only` additionally drops any run that is not from a 48-hour
+    cycle, regardless of age or severity. Unlike severity, which an old entry
+    may simply never have recorded, the cycle hour is recoverable with
+    certainty from the run's own timestamp -- so this is not a guess, and it
+    overrides the keep-the-unmeasured rule.
     """
     now = now or datetime.now(UTC)
     cutoff = now - timedelta(days=keep_days)
@@ -185,16 +199,22 @@ def prune(
     removed: list[RunRecord] = []
 
     for record in records:
-        if record.is_archival(keep_above) or record.when >= cutoff:
+        if extended_only and not record.is_extended:
+            removed.append(record)
+        elif record.is_archival(keep_above) or record.when >= cutoff:
             kept.append(record)
         else:
             removed.append(record)
 
     for record in removed:
+        why = (
+            "not an extended cycle"
+            if extended_only and not record.is_extended
+            else f"peak {record.peak_ugm3 or 0.0:.1f} µg/m³"
+        )
         for name in record.files:
-            target = archive_dir / name
-            target.unlink(missing_ok=True)
-            log.info("pruned %s (peak %.1f µg/m³)", name, record.peak_ugm3 or 0.0)
+            (archive_dir / name).unlink(missing_ok=True)
+            log.info("pruned %s (%s)", name, why)
 
     if removed:
         save(archive_dir, kept)
