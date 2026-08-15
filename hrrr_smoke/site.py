@@ -94,6 +94,35 @@ def _latest(records: list[RunRecord]) -> RunRecord | None:
     return ranked[0] if ranked else None
 
 
+def _intro(check: Check | None) -> str:
+    """The three questions a reader arrives with.
+
+    The middle one points at the status banner, which is only drawn when a
+    check was actually run -- a manual render without `--gate` has nothing to
+    report. Pointing at a banner that is not there would be the same fault this
+    page keeps trying not to commit, so the answer changes with it.
+    """
+    answer = (
+        "Checked daily &mdash; the banner below is today&rsquo;s answer."
+        if check
+        else "Checked daily, and reported here whenever the check has run."
+    )
+    questions = (
+        (
+            "Where&rsquo;s the smoke headed?",
+            "48 hours of NOAA&rsquo;s HRRR-Smoke, one frame an hour, "
+            "in local Pacific time.",
+        ),
+        ("Is it bad right now?", answer),
+        (
+            "Why isn&rsquo;t the map from today?",
+            "Animations are kept only when Seattle hits Moderate or worse.",
+        ),
+    )
+    items = "".join(f"<li><b>{q}</b> {a}</li>" for q, a in questions)
+    return f'<ul class="intro">{items}</ul>'
+
+
 def _provenance(record: RunRecord) -> str:
     """Why this particular animation exists, in the page's own words."""
     threshold = record.gate_threshold or "the threshold"
@@ -293,6 +322,16 @@ h1{font-size:1.6rem;margin:0 0 .2rem}
 h2{font-size:1.05rem;margin:2.2rem 0 .6rem;letter-spacing:.01em}
 .muted{color:var(--muted)}
 .sub{color:var(--muted);margin:0 0 1.4rem}
+
+/* The standfirst: the three questions a reader arrives with. A list without
+   bullet glyphs, so it reads as part of the header rather than as content --
+   the bold question already does the work a marker would. */
+.intro{list-style:none;margin:.7rem 0 1.4rem;padding:0;color:var(--muted);
+  font-size:.95rem;line-height:1.45}
+/* Enough gap that a question wrapping onto two or three lines on a phone
+   still reads as one item rather than running into the next. */
+.intro li{margin:0 0 .45rem}
+.intro b{color:var(--ink);font-weight:600}
 .status{display:flex;gap:.65rem;align-items:flex-start;background:var(--panel);
   border:1px solid var(--line);border-radius:10px;padding:.8rem 1rem;margin:0 0 1.4rem}
 .status .dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto;margin-top:.42rem}
@@ -441,10 +480,7 @@ def build(
 <title>Puget Sound smoke forecast</title>
 <style>{_CSS}</style></head><body><div class="wrap">
 <h1>Puget Sound smoke forecast</h1>
-<p class="sub">Near-surface smoke from NOAA&rsquo;s HRRR-Smoke model, in local
-Pacific time. The forecast is checked daily; an animation is normally kept only
-when Seattle reaches Moderate or worse, so the one below may be older than
-today&rsquo;s check.</p>
+{_intro(check)}
 {banner}
 <h2>Latest forecast</h2>
 {card}

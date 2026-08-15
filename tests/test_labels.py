@@ -140,46 +140,42 @@ def puget(tmp_path_factory):
         yield renderer, out
 
 
-@pytest.mark.parametrize(
-    ("peak", "expected"),
-    [
-        (0.5, "CLEAR"),
-        (5.0, "GOOD"),
-        (20.0, "MODERATE"),
-        (45.0, "SENSITIVE"),
-        (90.0, "UNHEALTHY"),
-        (200.0, "VERY UNHEALTHY"),
-        (900.0, "HAZARDOUS"),
-    ],
-)
-def test_the_header_badge_names_the_peaks_category(peak, expected, puget):
+def test_the_header_reports_the_lead_and_the_in_box_peak(puget):
     renderer, out = puget
-    renderer.render(_frame(peak), out)
-    assert renderer._badge.get_text() == expected
+    renderer.render(_frame(300.0), out)
+    assert renderer._lead.get_text() == "+13 h"
+    assert "peak 300 µg m⁻³" in renderer._meta.get_text()
 
 
-def test_the_badge_never_collides_with_the_lead(puget):
-    """The longest category name against the longest forecast lead."""
+def test_a_fire_outside_the_domain_is_not_reported_as_the_peak(puget):
+    """The BC wildfire problem, in miniature.
+
+    The array has to stay rectangular in grid space, so its corners reach past
+    the lat/lon box the map advertises. A fire sitting out there must not be
+    printed as this region's peak.
+    """
     renderer, out = puget
-    base = _frame(200.0)  # "VERY UNHEALTHY"
+    base = _frame(50.0)
+    inside = np.ones_like(base.values, dtype=bool)
+    values = base.values.copy()
+    inside[0, 0] = False
+    values[0, 0] = 4521.0  # the real one, at 49.8 N -- north of the domain
+
     renderer.render(
         SmokeFrame(
-            fhr=48,
+            fhr=13,
             run=base.run,
             valid=base.valid,
             lats=base.lats,
             lons=base.lons,
-            values=base.values,
+            values=values,
+            inside=inside,
         ),
         out,
     )
-    renderer.fig.canvas.draw()
-    canvas = renderer.fig.canvas.get_renderer()
-
-    assert renderer._lead.get_text() == "+48 h"
-    assert renderer._badge.get_window_extent(canvas).x1 <= (
-        renderer._lead.get_window_extent(canvas).x0
-    ), "the category badge overruns the forecast lead"
+    meta = renderer._meta.get_text()
+    assert "4,521" not in meta, "an out-of-box fire was reported as the peak"
+    assert "peak 50 µg m⁻³" in meta
 
 
 def test_the_smoke_layer_is_drawn_over_the_basemap_and_under_the_labels(puget):
