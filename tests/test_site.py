@@ -334,3 +334,28 @@ def test_the_archive_peak_column_is_labelled_once_for_the_whole_table(tmp_path):
     assert "Unknown peak" not in page
     assert page.count('data-label="Seattle peak"') == 2
     assert '<th class="num">Seattle peak</th>' in page
+
+
+def test_the_intro_asks_the_three_questions(tmp_path):
+    src = _archive(tmp_path, [f"{STEM}.gif"])
+    page = build(src, tmp_path / "site", tz=TZ, repo=REPO, check=_check()).read_text()
+
+    assert '<ul class="intro">' in page
+    for question in (
+        "Where&rsquo;s the smoke headed?",
+        "Is it bad right now?",
+        "Why isn&rsquo;t the map from today?",
+    ):
+        assert f"<b>{question}</b>" in page
+    # The old paragraph is gone, not merely hidden.
+    assert "Near-surface smoke from NOAA" not in page
+
+
+def test_the_intro_does_not_point_at_a_banner_that_is_absent(tmp_path):
+    """No gate ran, so there is no status banner to send the reader to."""
+    src = _archive(tmp_path, [f"{STEM}.gif"])
+    page = build(src, tmp_path / "site", tz=TZ, repo=REPO).read_text()
+
+    assert "Today&rsquo;s check" not in page  # no banner...
+    assert "the banner below" not in page  # ...so nothing may promise one
+    assert "Is it bad right now?" in page
