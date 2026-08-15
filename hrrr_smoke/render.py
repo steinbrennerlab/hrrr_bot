@@ -24,7 +24,17 @@ from matplotlib.colors import (
     ListedColormap,
 )
 
-from .config import AQI_COLORS, AQI_LABELS, AQI_LEVELS, AQI_OVER, Domain
+from .config import (
+    AQI_COLORS,
+    AQI_DARK_BANDS,
+    AQI_LABELS,
+    AQI_LEGEND_LABELS,
+    AQI_LEVELS,
+    AQI_OVER,
+    AQI_SOLID_COLORS,
+    Domain,
+    band_for,
+)
 from .grid import SmokeFrame
 
 log = logging.getLogger(__name__)
@@ -38,8 +48,14 @@ LAND = "#f5f2ed"
 # Geometry of the figure, in figure fractions. Fixed placement rather than
 # tight_layout so every frame lands on an identical canvas -- GIF needs that,
 # and a title that changes width must not shift the map underneath it.
-_MAP_BOX = (0.035, 0.145, 0.93, 0.745)
-_BAR_BOX = (0.10, 0.082, 0.80, 0.020)
+_MAP_BOX = (0.035, 0.155, 0.93, 0.735)
+_BAR_BOX = (0.10, 0.080, 0.80, 0.020)
+
+# Width reserved at the top right for "+N h", so the category badge beside it
+# can be right-aligned into a fixed slot instead of chasing the text's width.
+# Sized for the longest lead the 48-hour cycles produce, plus the badge's own
+# rounded padding, which overhangs its anchor.
+_LEAD_SLOT = 0.090
 
 # Single-hue magnitude ramp, for reading concentration rather than health
 # category. Same breakpoints, so the two palettes are directly comparable.
@@ -72,25 +88,25 @@ def _palette(name: str) -> tuple[ListedColormap, BoundaryNorm]:
     return cmap, BoundaryNorm(AQI_LEVELS, cmap.N)
 
 
-def _basemap(ax, domain: Domain) -> None:
+def _basemap(ax, domain: Domain, scale: str = "10m") -> None:
     ax.set_extent(
         [domain.lon_min, domain.lon_max, domain.lat_min, domain.lat_max],
         crs=ccrs.PlateCarree(),
     )
-    ax.add_feature(cfeature.LAND.with_scale("10m"), facecolor=LAND, zorder=0)
-    ax.add_feature(cfeature.OCEAN.with_scale("10m"), facecolor=WATER, zorder=0)
-    ax.add_feature(cfeature.LAKES.with_scale("10m"), facecolor=WATER, zorder=1)
+    ax.add_feature(cfeature.LAND.with_scale(scale), facecolor=LAND, zorder=0)
+    ax.add_feature(cfeature.OCEAN.with_scale(scale), facecolor=WATER, zorder=0)
+    ax.add_feature(cfeature.LAKES.with_scale(scale), facecolor=WATER, zorder=1)
     ax.add_feature(
-        cfeature.COASTLINE.with_scale("10m"),
+        cfeature.COASTLINE.with_scale(scale),
         edgecolor="#7d8791",
         linewidth=0.7,
         zorder=5,
     )
     ax.add_feature(
-        cfeature.STATES.with_scale("10m"), edgecolor=FAINT, linewidth=0.5, zorder=5
+        cfeature.STATES.with_scale(scale), edgecolor=FAINT, linewidth=0.5, zorder=5
     )
     ax.add_feature(
-        cfeature.BORDERS.with_scale("10m"),
+        cfeature.BORDERS.with_scale(scale),
         edgecolor="#7d8791",
         linewidth=0.7,
         linestyle=(0, (4, 2)),
@@ -103,10 +119,10 @@ def _basemap(ax, domain: Domain) -> None:
 
 def _cities(ax, domain: Domain) -> None:
     halo = [patheffects.withStroke(linewidth=2.4, foreground="white")]
-    for name, lat, lon in domain.cities:
+    for city in domain.cities:
         ax.plot(
-            lon,
-            lat,
+            city.lon,
+            city.lat,
             marker="o",
             markersize=3.4,
             markerfacecolor="white",
@@ -115,15 +131,22 @@ def _cities(ax, domain: Domain) -> None:
             transform=ccrs.PlateCarree(),
             zorder=6,
         )
-        ax.text(
-            lon + 0.04 * (domain.lon_max - domain.lon_min) / 4,
-            lat + 0.02 * (domain.lat_max - domain.lat_min) / 3,
-            name,
+        # Offset in points rather than degrees: the gap between a marker and
+        # its name should be the same visual distance on every domain, and a
+        # degree is not, once Lambert Conformal has had its way with the edges.
+        ax.annotate(
+            city.name,
+            xy=(city.lon, city.lat),
+            xycoords=ccrs.PlateCarree()._as_mpl_transform(ax),
+            xytext=(city.dx, city.dy),
+            textcoords="offset points",
+            ha=city.ha,
+            va=city.va,
             fontsize=7.5,
             color=INK,
-            transform=ccrs.PlateCarree(),
             zorder=6,
             path_effects=halo,
+            annotation_clip=False,
         )
 
 
@@ -151,14 +174,17 @@ def _legend(fig, cmap, norm) -> None:
 
     # Bands are drawn with uniform spacing, and the extend arrow occupies one
     # more slot, so each category centre is a simple fraction of the axis.
-    for i, label in enumerate(AQI_LABELS):
+    # Labels are anchored at their bottom so a two-line name grows upward into
+    # the gap under the map rather than down onto the bar.
+    for i, label in enumerate(AQI_LEGEND_LABELS):
         cax.text(
-            (i + 0.5) / len(AQI_LABELS),
-            1.55,
+            (i + 0.5) / len(AQI_LEGEND_LABELS),
+            1.5,
             label,
             transform=cax.transAxes,
             ha="center",
             va="bottom",
+            linespacing=1.15,
             fontsize=6.8,
             color=MUTED,
         )
@@ -190,7 +216,15 @@ class FrameRenderer:
         tz: ZoneInfo,
         palette: str = "aqi",
         dpi: int = 130,
+        scale: str = "10m",
     ) -> None:
+        """`scale` is the Natural Earth resolution for the coastline.
+
+        Projecting the 10 m shoreline of an inlet-riddled coast is by far the
+        slowest thing here, and it is the right cost for a published frame.
+        Tests and quick previews, which care about where things land rather
+        than how finely the shore is drawn, can drop to "50m".
+        """
         self.domain = domain
         self.tz = tz
         self.dpi = dpi
@@ -205,7 +239,7 @@ class FrameRenderer:
         self.fig.patch.set_facecolor("white")
         self.ax = self.fig.add_axes(_MAP_BOX, projection=proj)
 
-        _basemap(self.ax, domain)
+        _basemap(self.ax, domain, scale)
         _cities(self.ax, domain)
         _legend(self.fig, self.cmap, self.norm)
 
@@ -227,6 +261,20 @@ class FrameRenderer:
         self._lead = self.fig.text(
             right, 0.962, "", fontsize=13, color=MUTED, ha="right", va="center"
         )
+        # The badge names the category the peak figure below it falls in, so
+        # the number is readable without counting bands along the colourbar.
+        # Right-aligned in the slot left of "+N h", which is at most five
+        # characters wide, so the two can never collide however long the
+        # category name gets.
+        self._badge = self.fig.text(
+            right - _LEAD_SLOT,
+            0.962,
+            "",
+            fontsize=8,
+            fontweight="bold",
+            ha="right",
+            va="center",
+        )
         self._meta = self.fig.text(
             right, 0.929, "", fontsize=8.5, color=MUTED, ha="right", va="center"
         )
@@ -244,14 +292,34 @@ class FrameRenderer:
             norm=self.norm,
             transform=ccrs.PlateCarree(),
             shading="nearest",
+            # One model cell stays one flat block of colour -- this is a
+            # forecast on a 3 km grid, and interpolating it would invent detail
+            # the model never produced. Antialiasing does not do that: it only
+            # decides how a cell's *boundary* lands on the pixel grid. Without
+            # it (pcolormesh's default) each quad rounds its edges to whole
+            # pixels, neighbours disagree about who owns the shared edge, and
+            # the translucent palette turns the resulting hairline gaps into a
+            # mesh drawn over the entire map. Every value is unchanged; only
+            # the seam between two of them is.
+            antialiased=True,
             zorder=2,
         )
 
         valid = frame.valid.astimezone(self.tz)
         run = frame.run.astimezone(self.tz)
         peak = float(np.nanmax(frame.values))
+        band = band_for(peak)
         self._title.set_text(f"{valid:%a %b %-d} · {valid:%-I:%M %p} {valid:%Z}")
         self._lead.set_text(f"+{frame.fhr} h")
+        self._badge.set_text(AQI_LABELS[band].upper())
+        self._badge.set_color("white" if band in AQI_DARK_BANDS else INK)
+        self._badge.set_bbox(
+            {
+                "boxstyle": "round,pad=0.34",
+                "facecolor": AQI_SOLID_COLORS[band],
+                "edgecolor": "none",
+            }
+        )
         self._meta.set_text(
             f"run {run:%-m/%-d %-I %p %Z}  ·  peak {peak:,.0f} µg m⁻³"
         )
@@ -279,7 +347,8 @@ def render_frame(
     tz: ZoneInfo,
     palette: str = "aqi",
     dpi: int = 130,
+    scale: str = "10m",
 ) -> Path:
     """Render a single forecast hour. Use `FrameRenderer` for a whole series."""
-    with FrameRenderer(domain, tz=tz, palette=palette, dpi=dpi) as renderer:
-        return renderer.render(frame, out_path)
+    with FrameRenderer(domain, tz=tz, palette=palette, dpi=dpi, scale=scale) as r:
+        return r.render(frame, out_path)

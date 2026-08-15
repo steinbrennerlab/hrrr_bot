@@ -26,6 +26,27 @@ DEFAULT_TZ = "America/Los_Angeles"
 
 
 @dataclass(frozen=True)
+class City:
+    """A labelled point on a domain.
+
+    The label offset is in typographic points from the marker, not degrees, so
+    it means the same thing however wide the domain is and however the
+    projection stretches near the edges. The default sits the name up and to
+    the right; cities that would collide with a neighbour override it, which is
+    a judgement about one particular map and belongs here beside the
+    coordinates rather than in the renderer.
+    """
+
+    name: str
+    lat: float
+    lon: float
+    dx: float = 5.0
+    dy: float = 3.0
+    ha: str = "left"
+    va: str = "bottom"
+
+
+@dataclass(frozen=True)
 class Domain:
     """A lat/lon box to cut out of the CONUS grid, plus the cities to label."""
 
@@ -34,9 +55,14 @@ class Domain:
     lon_max: float
     lat_min: float
     lat_max: float
-    cities: tuple[tuple[str, float, float], ...]
+    cities: tuple[City, ...]
 
 
+# Label placement notes, for the crowded middle of the Sound: Bremerton and
+# Seattle are 20 km apart and Bremerton's name is long enough to run straight
+# over Seattle's marker, so it is thrown west over Hood Canal. Tacoma drops
+# below its marker to stay out of Seattle's column, and Everett rises above
+# its own so it does not chase Mount Vernon down the I-5 corridor.
 PUGET_SOUND = Domain(
     name="Greater Puget Sound",
     lon_min=-124.8,
@@ -44,14 +70,14 @@ PUGET_SOUND = Domain(
     lat_min=46.3,
     lat_max=49.2,
     cities=(
-        ("Seattle", 47.606, -122.332),
-        ("Tacoma", 47.253, -122.444),
-        ("Everett", 47.979, -122.202),
-        ("Olympia", 47.038, -122.900),
-        ("Bellingham", 48.750, -122.479),
-        ("Bremerton", 47.567, -122.633),
-        ("Mount Vernon", 48.421, -122.334),
-        ("Port Angeles", 48.118, -123.431),
+        City("Seattle", 47.606, -122.332, dx=6.0, dy=4.0),
+        City("Tacoma", 47.253, -122.444, dx=6.0, dy=-5.0, va="top"),
+        City("Everett", 47.979, -122.202, dx=6.0, dy=4.0),
+        City("Olympia", 47.038, -122.900, dx=-6.0, dy=-5.0, ha="right", va="top"),
+        City("Bellingham", 48.750, -122.479, dx=6.0, dy=3.0),
+        City("Bremerton", 47.567, -122.633, dx=-6.0, dy=-1.0, ha="right", va="center"),
+        City("Mount Vernon", 48.421, -122.334, dx=6.0, dy=3.0),
+        City("Port Angeles", 48.118, -123.431, dx=0.0, dy=-6.0, ha="center", va="top"),
     ),
 )
 
@@ -64,12 +90,12 @@ CASCADIA = Domain(
     lat_min=44.5,
     lat_max=50.0,
     cities=(
-        ("Seattle", 47.606, -122.332),
-        ("Vancouver BC", 49.283, -123.121),
-        ("Spokane", 47.659, -117.425),
-        ("Portland", 45.512, -122.658),
-        ("Yakima", 46.602, -120.505),
-        ("Bellingham", 48.750, -122.479),
+        City("Seattle", 47.606, -122.332, dx=6.0, dy=-5.0, va="top"),
+        City("Vancouver BC", 49.283, -123.121, dx=-6.0, dy=3.0, ha="right"),
+        City("Spokane", 47.659, -117.425, dx=-6.0, dy=3.0, ha="right"),
+        City("Portland", 45.512, -122.658, dx=6.0, dy=3.0),
+        City("Yakima", 46.602, -120.505, dx=6.0, dy=3.0),
+        City("Bellingham", 48.750, -122.479, dx=6.0, dy=3.0),
     ),
 )
 
@@ -90,6 +116,33 @@ AQI_COLORS = (
     (0.56, 0.25, 0.59, 0.88),  # 125-225  very unhealthy
 )
 AQI_OVER = (0.49, 0.00, 0.14, 0.92)  # > 225    hazardous
+
+# Opaque equivalents of the same bands, for chips and badges that sit on a flat
+# background instead of blending over the basemap. Shared so the map's category
+# badge and the page's category chips cannot drift apart.
+AQI_SOLID_COLORS = (
+    "#9aa7b2",  # clear
+    "#5aa95f",  # good
+    "#e0bc16",  # moderate
+    "#e07b18",  # sensitive groups
+    "#d62529",  # unhealthy
+    "#8f3f97",  # very unhealthy
+    "#7e0023",  # hazardous
+)
+
+# Which of those need white text rather than ink to stay legible.
+AQI_DARK_BANDS = frozenset({4, 5, 6})
+
+
+def band_for(value: float) -> int:
+    """Index of the AQI band a concentration falls in."""
+    index = 0
+    for i, edge in enumerate(AQI_LEVELS):
+        if value >= edge:
+            index = i
+    return index
+# Short names, used as the command-line threshold keys ("--gate-threshold
+# sensitive") and anywhere a category has to fit in a table cell.
 AQI_LABELS = (
     "Clear",
     "Good",
@@ -97,5 +150,19 @@ AQI_LABELS = (
     "Sensitive",
     "Unhealthy",
     "Very unhealthy",
+    "Hazardous",
+)
+
+# What a reader should actually see. "Sensitive" alone says nothing; the EPA
+# category is "unhealthy for sensitive groups". The newlines are where a label
+# is allowed to wrap under a colourbar band, which is the only place these are
+# tight enough to need it -- the page collapses them back to spaces.
+AQI_LEGEND_LABELS = (
+    "Clear",
+    "Good",
+    "Moderate",
+    "Sensitive\ngroups",
+    "Unhealthy",
+    "Very\nunhealthy",
     "Hazardous",
 )

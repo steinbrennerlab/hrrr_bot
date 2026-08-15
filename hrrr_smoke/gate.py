@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 import requests
 
 from .catalog import Cycle
-from .config import AQI_LABELS, AQI_LEVELS, Domain
+from .config import AQI_LABELS, AQI_LEVELS, City, Domain
 from .fetch import fetch_record
 from .grid import SmokeFrame, city_series, load_frame
 
@@ -56,12 +56,12 @@ class GateResult:
         )
 
 
-def find_city(domain: Domain, name: str) -> tuple[str, float, float]:
+def find_city(domain: Domain, name: str) -> City:
     """Look up a labelled city on the domain by name, case-insensitively."""
     for city in domain.cities:
-        if city[0].lower() == name.lower():
+        if city.name.lower() == name.lower():
             return city
-    known = ", ".join(c[0] for c in domain.cities)
+    known = ", ".join(c.name for c in domain.cities)
     raise ValueError(
         f"{name!r} is not a city on the {domain.name} domain. Try: {known}"
     )
@@ -126,14 +126,14 @@ def evaluate(
 ) -> GateResult:
     """Read the reference city's smoke across the window and compare it."""
     now = now or datetime.now(UTC)
-    name, lat, lon = find_city(domain, city)
+    found = find_city(domain, city)
     level = THRESHOLDS[threshold]
 
     start, end = window(now, tz, days)
     points = sample_points(cycle, start, end, now, step_hours)
     log.info(
         "gate: sampling %s from %s to %s (%d points)",
-        name,
+        found.name,
         start.astimezone(tz).strftime("%a %-I %p %Z"),
         end.astimezone(tz).strftime("%a %-I %p %Z"),
         len(points),
@@ -156,10 +156,10 @@ def evaluate(
             "Gate read no smoke records; refusing to decide whether to render."
         )
 
-    values = city_series(frames, lat, lon)
+    values = city_series(frames, found.lat, found.lon)
     peak_at_index = max(range(len(values)), key=values.__getitem__)
     return GateResult(
-        city=name,
+        city=found.name,
         threshold_label=threshold,
         threshold=level,
         peak=values[peak_at_index],

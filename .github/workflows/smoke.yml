@@ -70,12 +70,15 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/share/cartopy
-          key: cartopy-naturalearth-10m-v1
+          key: cartopy-naturalearth-10m-50m-v2
 
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq ffmpeg
+          # gifsicle is optional -- make_gif writes a valid GIF without it and
+          # only skips the extra -O3 pass -- but it is a few hundred KB off
+          # every animation for a two-second install.
+          sudo apt-get install -y -qq ffmpeg gifsicle
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
@@ -116,7 +119,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CYCLE: ${{ steps.smoke.outputs.cycle }}
         run: |
-          for ext in gif mp4; do
+          for ext in gif mp4 png; do
             src=$(ls out/*."$ext" 2>/dev/null | head -1) || true
             [ -n "$src" ] && cp "$src" "puget_smoke_latest.$ext"
           done
@@ -163,6 +166,7 @@ jobs:
           path: |
             out/*.gif
             out/*.mp4
+            out/*.png
           if-no-files-found: error
           retention-days: 30
 

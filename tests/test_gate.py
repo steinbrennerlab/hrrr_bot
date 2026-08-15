@@ -147,7 +147,9 @@ def test_describe_reports_the_verdict_and_local_time():
 
 
 def test_find_city_is_case_insensitive():
-    assert find_city(PUGET, "seattle")[0] == "Seattle"
+    found = find_city(PUGET, "seattle")
+    assert found.name == "Seattle"
+    assert (round(found.lat, 3), round(found.lon, 3)) == (47.606, -122.332)
 
 
 def test_find_city_lists_options_when_unknown():
