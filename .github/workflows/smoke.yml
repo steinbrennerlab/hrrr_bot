@@ -103,7 +103,8 @@ jobs:
             --archive runs \
             --site site \
             --prune-days 30 \
-            --prune-keep-above unhealthy
+            --prune-keep-above unhealthy \
+            --prune-non-extended
 
       # Release assets live outside git history, so a permanent link to the
       # newest animation costs nothing in repository size. Rolling the `latest`

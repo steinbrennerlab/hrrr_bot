@@ -104,6 +104,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="delete archived runs older than this many days (off by default)",
     )
     keep.add_argument(
+        "--prune-non-extended",
+        action="store_true",
+        help=(
+            "also delete archived runs that are not from a 48-hour "
+            "(00/06/12/18Z) cycle, whatever their age or severity"
+        ),
+    )
+    keep.add_argument(
         "--site",
         type=Path,
         help="build the published page into this directory (needs --archive)",
@@ -359,6 +367,7 @@ def run(argv: list[str] | None = None) -> int:
                 args.archive,
                 keep_days=args.prune_days,
                 keep_above=THRESHOLDS[args.prune_keep_above],
+                extended_only=args.prune_non_extended,
             )
             if pruned:
                 log.info(
