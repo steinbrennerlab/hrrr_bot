@@ -2,6 +2,34 @@
   "version": 2,
   "runs": [
     {
+      "cycle": "hrrr_smoke_puget_20260816_t12z",
+      "cycle_time": "2026-08-16T12:00:00+00:00",
+      "domain": "puget",
+      "reference_city": "Seattle",
+      "peak_ugm3": 12.2,
+      "peak_at": "2026-08-17T02:00:00+00:00",
+      "frames": 49,
+      "files": [
+        "hrrr_smoke_puget_20260816_t12z.gif",
+        "hrrr_smoke_puget_20260816_t12z.mp4",
+        "hrrr_smoke_puget_20260816_t12z.png"
+      ],
+      "city_peaks": {
+        "Seattle": 12.2,
+        "Tacoma": 9.9,
+        "Everett": 8.6,
+        "Olympia": 7.2,
+        "Bellingham": 9.3,
+        "Bremerton": 10.4,
+        "Mount Vernon": 9.6,
+        "Port Angeles": 7.8
+      },
+      "origin": "gated",
+      "gate_threshold": "moderate",
+      "valid_from": "2026-08-16T12:00:00+00:00",
+      "valid_to": "2026-08-18T12:00:00+00:00"
+    },
+    {
       "cycle": "hrrr_smoke_puget_20260815_t18z",
       "cycle_time": "2026-08-15T18:00:00+00:00",
       "domain": "puget",
