@@ -56,9 +56,6 @@ jobs:
   animate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
       - uses: actions/checkout@v7
@@ -182,10 +179,6 @@ jobs:
         with:
           path: site
 
-      - name: Deploy the page
-        id: deploy
-        uses: actions/deploy-pages@v5
-
       - name: Report
         if: always()
         run: |
@@ -196,3 +189,21 @@ jobs:
           fi
           echo '' >> "$GITHUB_STEP_SUMMARY"
           echo "${{ steps.smoke.outputs.summary }}" >> "$GITHUB_STEP_SUMMARY"
+
+  # Deploying in its own job, as GitHub's Pages starter workflows do. As a step
+  # straight after upload-pages-artifact, deploy-pages asked for the artifact
+  # ~0.2 s after it was finalized and was told there were none (Nov 2026, every
+  # run); the artifact list catches up seconds later. A separate job gives it
+  # that time.
+  deploy:
+    needs: animate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Deploy the page
+        id: deploy
+        uses: actions/deploy-pages@v5
