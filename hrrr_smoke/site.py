@@ -103,9 +103,11 @@ def _intro(check: Check | None) -> str:
     page keeps trying not to commit, so the answer changes with it.
     """
     answer = (
-        "Checked daily &mdash; the banner below is today&rsquo;s answer."
+        "Checked daily from July through October &mdash; the banner below "
+        "is the latest answer."
         if check
-        else "Checked daily, and reported here whenever the check has run."
+        else "Checked daily from July through October, and reported here "
+        "whenever the check has run."
     )
     questions = (
         (

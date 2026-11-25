@@ -9,7 +9,10 @@ on:
     # GitHub's cron often fires late, which is only ever safer here: --extended
     # holds out for a cycle that has published all 48 hours, so a late run
     # still gets a complete forecast rather than a half-written one.
-    - cron: "30 14 * * *"
+    #
+    # Fire season only: July through October. Outside it the page keeps the
+    # last check of the season, and a manual dispatch still works year-round.
+    - cron: "30 14 * 7-10 *"
 
   # A change to the page or the workflow should publish itself rather than wait
   # for tomorrow's cron. Without this, merging a Pages change leaves the site

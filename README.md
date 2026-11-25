@@ -6,9 +6,11 @@ short animation over the greater Puget Sound, labelled in local Pacific time.
 ### 👉 [steinbrennerlab.github.io/hrrr_bot](https://steinbrennerlab.github.io/hrrr_bot/)
 
 The page renders the newest animation inline, with the peak per city and the
-recent archive. It refreshes every day — including quiet days, where it reports
-that the check ran and found nothing worth animating, so a stale date always
-means something is actually broken.
+recent archive. It refreshes every day from July through October (fire season)
+— including quiet days, where it reports that the check ran and found nothing
+worth animating, so a stale date in season always means something is actually
+broken. From November through June it does not run, and the page shows the
+last check of the season.
 
 Direct files, if you want the raw animation rather than the page:
 
@@ -257,8 +259,9 @@ a success, not a failure.
 ## Scheduled runs
 
 `.github/workflows/smoke.yml` runs the gated pipeline daily at **14:30 UTC**
-(7:30 AM PDT / 6:30 AM PST) with `--extended --hours 48`, and commits any
-animation to `runs/`.
+(7:30 AM PDT / 6:30 AM PST), **July through October only**, with
+`--extended --hours 48`, and commits any animation to `runs/`. Outside that
+window it can still be run by hand from the Actions tab (`workflow_dispatch`).
 
 That time is chosen off the cycle schedule rather than the clock: the 12Z long
 run finishes about 13:47Z, so 14:30 leaves ~40 minutes of margin. GitHub's cron
