@@ -22,9 +22,9 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -32,7 +32,7 @@ jobs:
 
       # test_labels.py draws real basemaps, at the coarse 50 m scale.
       - name: Cache Natural Earth basemap
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/cartopy
           key: cartopy-naturalearth-10m-50m-v2
